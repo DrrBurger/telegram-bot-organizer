@@ -7,9 +7,10 @@ from aiogram.dispatcher import Dispatcher
 from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters import Command
 from config_data.config import Config, load_config
-from handlers import user_handlers
 from states.states import Place, Del, Rating
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
 
 # Логирование бота
 logging.basicConfig(level=logging.INFO)
@@ -25,6 +26,7 @@ dp = Dispatcher(bot, storage=storage)
 
 @dp.message_handler(commands=['start'])
 async def start_command(message: types.Message):
+    chat_id = message.chat.id
     await bot.send_message(message.chat.id, "Привет, я ваш бот!")
 
 
@@ -158,5 +160,30 @@ async def process_rating(message: types.Message, state: FSMContext):
     await message.answer("Рейтинг успешно обновлен!")
     await state.finish()
 
+
+@dp.message_handler(Command('poll'))
+async def poll_command(message: types.Message):
+    print(message.chat.id)
+    await bot.send_poll(
+        chat_id=message.chat.id,
+        question="Выберите время и день недели:",
+        options=["Суббота | 12:00", "Суббота | 13:00", "Суббота | 14:00", "Суббота | 15:00", "Суббота | 17:00",
+                 "Воскресенье | 12:00", "Воскресенье | 13:00", "Воскресенье | 14:00", "Воскресенье | 15:00", "Воскресенье | 17:00"]
+    )
+
+
+async def send_poll():
+    await bot.send_poll(
+        chat_id=-857034880,
+        question="Выберите время и день недели:",
+        options=["Суббота | 12:00", "Суббота | 13:00", "Суббота | 14:00", "Суббота | 15:00", "Суббота | 17:00",
+                 "Воскресенье | 12:00", "Воскресенье | 13:00", "Воскресенье | 14:00", "Воскресенье | 15:00", "Воскресенье | 17:00"]
+    )
+
+
 if __name__ == '__main__':
+    scheduler = AsyncIOScheduler()
+    trigger = CronTrigger(day_of_week='tue', hour=15, minute=20)
+    scheduler.add_job(send_poll, trigger)
+    scheduler.start()
     executor.start_polling(dp, skip_updates=True)
