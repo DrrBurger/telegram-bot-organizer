@@ -3,6 +3,7 @@ import logging
 import random
 
 from aiogram import Bot, types
+from aiogram import exceptions
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.dispatcher import Dispatcher, FSMContext
 from aiogram.dispatcher.filters import Command
@@ -30,21 +31,22 @@ storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)
 
 
-@dp.message_handler(commands=['start'])
-async def start_command(message: types.Message):
-    await bot.send_message(message.chat.id, "Привет, я ваш бот!")
-
-
-@dp.message_handler(commands=['help'])
+@dp.message_handler(commands=['start', 'help'])
 async def help_command(message: types.Message):
-    help_text = "Доступные команды:\n" \
-                "/add - Добавить новое место\n" \
-                "/del - Удалить место (только для администраторов)\n" \
-                "/place - Вывести список всех мест\n" \
-                "/random - Выбрать случайное место\n" \
-                "/rating - Поставить оценку выбранному месту\n" \
-                "/poll - Отправляяет опрос с выбором дня"
-    await message.reply(help_text)
+    if 'start' in message.text:
+        await bot.send_message(message.chat.id, "Привет, я ваш бот!")
+    else:
+        help_text = "Доступные команды:\n" \
+            "/add - Добавить новое место\n" \
+            "/del - Удалить место (только для администраторов)\n" \
+            "/place - Вывести список всех мест\n" \
+            "/random - Выбрать случайное место\n" \
+            "/rating - Поставить оценку выбранному месту\n" \
+            "/poll - Отправляяет опрос с выбором дня"
+        await message.answer(help_text)
+
+    # Удаляем сообщение с командой от пользователя
+    await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
 
 
 @dp.message_handler(Command('add'))
@@ -99,6 +101,7 @@ async def process_address(message: types.Message, state: FSMContext):
 
 @dp.message_handler(Command('place'))
 async def show_places(message: types.Message):
+
     # Удаляем сообщение с командой от пользователя
     await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
 
@@ -113,7 +116,7 @@ async def show_places(message: types.Message):
             for row in rows:
                 places_list += f"Название: {row[0]}\n"\
                                f"Адрес: {row[1]}\n"\
-                               f"Средний рейтинг: {row[2]}\n\n"
+                               f"Средний рейтинг: {row[2]:.1f}\n\n"
             sent_message = await message.answer(places_list)
             await asyncio.sleep(60)
             await bot.delete_message(chat_id=message.chat.id, message_id=sent_message.message_id)
@@ -156,7 +159,6 @@ async def process_del_name(message: types.Message, state: FSMContext):
 # обработчик команды /rating
 @dp.message_handler(Command('rating'))
 async def start_rating_cmd_handler(message: types.Message):
-
     state = dp.current_state(user=message.from_user.id)
     async with state.proxy() as data:
         data['messages_to_delete'] = [message.message_id]
@@ -184,8 +186,22 @@ async def process_rating_name(message: types.Message, state: FSMContext):
 @dp.message_handler(state=Rating.rating)
 async def process_rating(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
-        data['rating'] = int(message.text)
         data['messages_to_delete'].append(message.message_id)
+        try:
+            data['rating'] = int(message.text)
+            if not 1 <= data['rating'] <= 10:
+                raise ValueError()
+        except ValueError:
+            sent_message = await message.answer("Оценка должна быть числом от 1 до 10. Попробуйте ещё раз.")
+            data['messages_to_delete'].append(sent_message.message_id)
+            await asyncio.sleep(3)
+            for msg_id in data['messages_to_delete']:
+                try:
+                    await bot.delete_message(chat_id=message.chat.id, message_id=msg_id)
+                except exceptions.MessageCantBeDeleted:
+                    continue
+            await state.reset_state()
+            return
 
         # обновляем рейтинг места в базе данных
         async with aiosqlite.connect('places.db') as db:
@@ -193,7 +209,16 @@ async def process_rating(message: types.Message, state: FSMContext):
             await cursor.execute('SELECT * FROM places WHERE name = ?', (data['name'],))
             place = await cursor.fetchone()
             if place is None:
-                return await message.answer("Такого места не существует в базе данных.")
+                sent_message = await message.answer("Такого места не существует в базе данных. Попробуйте ещё раз.")
+                data['messages_to_delete'].append(sent_message.message_id)
+                await asyncio.sleep(3)
+                for msg_id in data['messages_to_delete']:
+                    try:
+                        await bot.delete_message(chat_id=message.chat.id, message_id=msg_id)
+                    except exceptions.MessageCantBeDeleted:
+                        continue
+                await state.reset_state()
+                return
 
             await cursor.execute('CREATE TABLE IF NOT EXISTS ratings (name text, rating integer)')
             await cursor.execute('INSERT INTO ratings (name, rating) VALUES (?, ?)', (data['name'], data['rating']))
@@ -210,7 +235,10 @@ async def process_rating(message: types.Message, state: FSMContext):
 
     async with state.proxy() as data:
         for msg_id in data['messages_to_delete']:
-            await bot.delete_message(chat_id=message.chat.id, message_id=msg_id)
+            try:
+                await bot.delete_message(chat_id=message.chat.id, message_id=msg_id)
+            except exceptions.MessageCantBeDeleted:
+                continue
 
     await state.finish()
 
