@@ -8,3 +8,8 @@ class Place(StatesGroup):
 
 class Del(StatesGroup):
     name = State()
+
+
+class Rating(StatesGroup):
+    name = State()
+    rating = State()

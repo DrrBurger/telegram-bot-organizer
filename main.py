@@ -7,7 +7,8 @@ from aiogram.dispatcher import Dispatcher
 from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters import Command
 from config_data.config import Config, load_config
-from states.states import Place, Del
+from handlers import user_handlers
+from states.states import Place, Del, Rating
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 
 # Логирование бота
@@ -15,14 +16,13 @@ logging.basicConfig(level=logging.INFO)
 
 config: Config = load_config()
 
-input_data = {}
+# input_data = {}
 # Инициализация бота и диспетчера
 bot = Bot(token=config.tg_bot.token)
 storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)
 
 
-# Пример списка разрешенных ID пользователей
 @dp.message_handler(commands=['start'])
 async def start_command(message: types.Message):
     await bot.send_message(message.chat.id, "Привет, я ваш бот!")
@@ -34,7 +34,8 @@ async def help_command(message: types.Message):
                 "/add - Добавить новое место\n" \
                 "/del - Удалить место (только для администраторов)\n" \
                 "/place - Вывести список всех мест" \
-                "/random - Выбирате случайное место"
+                "/random - Выбирате случайное место" \
+                "/rating - Поставить оценку выбранному месту"
     await message.reply(help_text)
 
 
@@ -48,7 +49,7 @@ async def start_cmd_handler(message: types.Message):
 @dp.message_handler(state=Place.name)
 async def process_name(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
-        data['name'] = message.text
+        data['name'] = message.text.lower()
     await message.answer("Введите адрес места:")
     await Place.next()
 
@@ -60,10 +61,18 @@ async def process_address(message: types.Message, state: FSMContext):
         # добавляем место в базу данных
         async with aiosqlite.connect('places.db') as db:
             cursor = await db.cursor()
-            await cursor.execute('CREATE TABLE IF NOT EXISTS places (name text, address text)')
-            await cursor.execute('INSERT INTO places (name, address) VALUES (?, ?)', (data['name'], data['address']))
-            await db.commit()
-    await message.answer("Место успешно добавлено!")
+            await cursor.execute('CREATE TABLE IF NOT EXISTS places (name text, address text, rating integer DEFAULT 0)')
+
+            # проверка на существование места в базе
+            await cursor.execute('SELECT name FROM places WHERE name = ?', (data['name'],))
+            result = await cursor.fetchone()
+            if result is not None:
+                await message.answer("Это место уже есть в базе!")
+            else:
+                await cursor.execute('INSERT INTO places (name, address) VALUES (?, ?)', (data['name'], data['address']))
+                await db.commit()
+                await message.answer("Место успешно добавлено!")
+
     await state.finish()
 
 
@@ -73,8 +82,13 @@ async def show_places(message: types.Message):
         cursor = await db.cursor()
         await cursor.execute('SELECT * FROM places')
         rows = await cursor.fetchall()
-        for row in rows:
-            await message.answer(f"Название: {row[0]}, Адрес: {row[1]}")
+        if not rows:
+            await message.answer("База данных пуста!")
+        else:
+            for row in rows:
+                await message.answer(f"Название: {row[0]}\n"
+                                     f"Адрес: {row[1]}\n"
+                                     f"Средний рейтинг: {row[2]}\n")
 
 
 # Проверка, является ли пользователь администратором или доверенным лицом
@@ -106,6 +120,42 @@ async def process_del_name(message: types.Message, state: FSMContext):
             await cursor.execute('DELETE FROM places WHERE name = ?', (data['name'],))
             await db.commit()
     await message.answer("Место успешно удалено!")
+    await state.finish()
+
+
+# обработчик команды /rating
+@dp.message_handler(Command('rating'))
+async def start_rating_cmd_handler(message: types.Message):
+    await message.answer("Введите название места, которому хотите изменить рейтинг:")
+    await Rating.name.set()
+
+
+# обработчик ввода имени места при обновлении рейтинга
+@dp.message_handler(state=Rating.name)
+async def process_rating_name(message: types.Message, state: FSMContext):
+    async with state.proxy() as data:
+        data['name'] = message.text
+    await message.answer("Введите оценку от 1 до 10:")
+    await Rating.next()
+
+
+# обработчик ввода оценки
+@dp.message_handler(state=Rating.rating)
+async def process_rating(message: types.Message, state: FSMContext):
+    async with state.proxy() as data:
+        data['rating'] = int(message.text)
+        # обновляем рейтинг места в базе данных
+        async with aiosqlite.connect('places.db') as db:
+            cursor = await db.cursor()
+            await cursor.execute('CREATE TABLE IF NOT EXISTS ratings (name text, rating integer)')
+            await cursor.execute('INSERT INTO ratings (name, rating) VALUES (?, ?)', (data['name'], data['rating']))
+            await cursor.execute('SELECT AVG(rating) FROM ratings WHERE name = ?', (data['name'],))
+            avg_rating = await cursor.fetchone()
+            if avg_rating is None:
+                return await message.answer("Такого места не существует в базе данных.")
+            await cursor.execute('UPDATE places SET rating = ? WHERE name = ?', (avg_rating[0], data['name']))
+            await db.commit()
+    await message.answer("Рейтинг успешно обновлен!")
     await state.finish()
 
 if __name__ == '__main__':
