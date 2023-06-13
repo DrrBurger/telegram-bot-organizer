@@ -33,9 +33,9 @@ async def help_command(message: types.Message):
     help_text = "Доступные команды:\n" \
                 "/add - Добавить новое место\n" \
                 "/del - Удалить место (только для администраторов)\n" \
-                "/place - Вывести список всех мест" \
-                "/random - Выбирате случайное место" \
-                "/rating - Поставить оценку выбранному месту"
+                "/place - Вывести список всех мест\n" \
+                "/random - Выбирате случайное место\n" \
+                "/rating - Поставить оценку выбранному месту\n"
     await message.reply(help_text)
 
 
@@ -134,7 +134,7 @@ async def start_rating_cmd_handler(message: types.Message):
 @dp.message_handler(state=Rating.name)
 async def process_rating_name(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
-        data['name'] = message.text
+        data['name'] = message.text.lower()
     await message.answer("Введите оценку от 1 до 10:")
     await Rating.next()
 
