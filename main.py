@@ -1,21 +1,27 @@
 import asyncio
 import logging
 import random
-import aiosqlite
+
 from aiogram import Bot, types
-from aiogram.utils import executor
-from aiogram.dispatcher import Dispatcher
-from aiogram.dispatcher import FSMContext
-from aiogram.dispatcher.filters import Command
-from config_data.config import Config, load_config
-from states.states import Place, Del, Rating
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
+from aiogram.dispatcher import Dispatcher, FSMContext
+from aiogram.dispatcher.filters import Command
+from aiogram.utils import executor
+
+import aiosqlite
+
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+
+from config_data.config import Config, load_config
+
+from states.states import Del, Place, Rating
+
 
 # Логирование бота
 logging.basicConfig(level=logging.INFO)
 
+# загрузка конфига с данными
 config: Config = load_config()
 
 # Инициализация бота и диспетчера
