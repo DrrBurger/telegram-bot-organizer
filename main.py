@@ -1,4 +1,3 @@
-import aiogram
 import logging
 import aiosqlite
 from aiogram import Bot, types
