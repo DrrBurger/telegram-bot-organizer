@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import random
 import aiosqlite
@@ -42,8 +43,10 @@ async def help_command(message: types.Message):
 
 @dp.message_handler(Command('add'))
 async def start_cmd_handler(message: types.Message):
+    state = dp.current_state(chat=message.chat.id, user=message.from_user.id)
     # начинаем диалог
-    await message.answer("Введите название места:")
+    bot_message = await message.answer("Введите название места:")
+    await state.update_data(message_id=[message.message_id, bot_message.message_id])  # сохраняем идентификаторы сообщений
     await Place.name.set()
 
 
@@ -51,7 +54,9 @@ async def start_cmd_handler(message: types.Message):
 async def process_name(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         data['name'] = message.text.lower()
-    await message.answer("Введите адрес места:")
+        data['message_id'].extend([message.message_id])  # сохраняем идентификатор сообщения
+    bot_message = await message.answer("Введите адрес места:")
+    await state.update_data(message_id=data['message_id'] + [bot_message.message_id])
     await Place.next()
 
 
@@ -59,6 +64,8 @@ async def process_name(message: types.Message, state: FSMContext):
 async def process_address(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         data['address'] = message.text
+        data['message_id'].extend([message.message_id])  # сохраняем идентификатор сообщения
+
         # добавляем место в базу данных
         async with aiosqlite.connect('places.db') as db:
             cursor = await db.cursor()
@@ -68,13 +75,20 @@ async def process_address(message: types.Message, state: FSMContext):
             await cursor.execute('SELECT name FROM places WHERE name = ?', (data['name'],))
             result = await cursor.fetchone()
             if result is not None:
-                await message.answer("Это место уже есть в базе!")
+                bot_message = await message.answer("Это место уже есть в базе!")
+                data['message_id'].extend([bot_message.message_id])
             else:
                 await cursor.execute('INSERT INTO places (name, address) VALUES (?, ?)', (data['name'], data['address']))
                 await db.commit()
-                await message.answer("Место успешно добавлено!")
+                bot_message = await message.answer("Место успешно добавлено!")
+                data['message_id'].extend([bot_message.message_id])
 
     await state.finish()
+
+    # удаление всех сообщений после добавления места
+    await asyncio.sleep(3)
+    for msg_id in data['message_id']:
+        await bot.delete_message(chat_id=message.chat.id, message_id=msg_id)
 
 
 @dp.message_handler(Command('place'))
