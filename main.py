@@ -1,4 +1,5 @@
 import logging
+import random
 import aiosqlite
 from aiogram import Bot, types
 from aiogram.utils import executor
@@ -16,7 +17,6 @@ logging.basicConfig(level=logging.INFO)
 
 config: Config = load_config()
 
-# input_data = {}
 # Инициализация бота и диспетчера
 bot = Bot(token=config.tg_bot.token)
 storage = MemoryStorage()
@@ -25,7 +25,6 @@ dp = Dispatcher(bot, storage=storage)
 
 @dp.message_handler(commands=['start'])
 async def start_command(message: types.Message):
-    chat_id = message.chat.id
     await bot.send_message(message.chat.id, "Привет, я ваш бот!")
 
 
@@ -35,8 +34,9 @@ async def help_command(message: types.Message):
                 "/add - Добавить новое место\n" \
                 "/del - Удалить место (только для администраторов)\n" \
                 "/place - Вывести список всех мест\n" \
-                "/random - Выбирате случайное место\n" \
-                "/rating - Поставить оценку выбранному месту\n"
+                "/random - Выбрать случайное место\n" \
+                "/rating - Поставить оценку выбранному месту\n" \
+                "/poll - Отправляяет опрос с выбором дня"
     await message.reply(help_text)
 
 
@@ -162,7 +162,6 @@ async def process_rating(message: types.Message, state: FSMContext):
 
 @dp.message_handler(Command('poll'))
 async def poll_command(message: types.Message):
-    print(message.chat.id)
     await bot.send_poll(
         chat_id=message.chat.id,
         question="Выберите время и день недели:",
@@ -180,9 +179,23 @@ async def send_poll():
     )
 
 
+@dp.message_handler(Command('random'))
+async def random_place(message: types.Message):
+    async with aiosqlite.connect('places.db') as db:
+        cursor = await db.cursor()
+        await cursor.execute('SELECT * FROM places')
+        rows = await cursor.fetchall()
+        if rows:
+            random_row = random.choice(rows)
+            await message.answer(f"Название: {random_row[0]}\n"
+                                 f"Адрес: {random_row[1]}\n"
+                                 f"Рейтинг: {random_row[2]}\n")
+        else:
+            await message.answer("В базе данных пока нет мест.")
+
 if __name__ == '__main__':
     scheduler = AsyncIOScheduler()
-    trigger = CronTrigger(day_of_week='tue', hour=15, minute=20)
+    trigger = CronTrigger(day_of_week='tue', hour=12)
     scheduler.add_job(send_poll, trigger)
     scheduler.start()
     executor.start_polling(dp, skip_updates=True)
