@@ -99,6 +99,9 @@ async def process_address(message: types.Message, state: FSMContext):
 
 @dp.message_handler(Command('place'))
 async def show_places(message: types.Message):
+    # Удаляем сообщение с командой от пользователя
+    await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
+
     async with aiosqlite.connect('places.db') as db:
         cursor = await db.cursor()
         await cursor.execute('SELECT * FROM places')
@@ -106,10 +109,14 @@ async def show_places(message: types.Message):
         if not rows:
             await message.answer("База данных пуста!")
         else:
+            places_list = ''
             for row in rows:
-                await message.answer(f"Название: {row[0]}\n"
-                                     f"Адрес: {row[1]}\n"
-                                     f"Средний рейтинг: {row[2]}\n")
+                places_list += f"Название: {row[0]}\n"\
+                               f"Адрес: {row[1]}\n"\
+                               f"Средний рейтинг: {row[2]}\n\n"
+            sent_message = await message.answer(places_list)
+            await asyncio.sleep(60)
+            await bot.delete_message(chat_id=message.chat.id, message_id=sent_message.message_id)
 
 
 # Проверка, является ли пользователь администратором или доверенным лицом
@@ -121,6 +128,7 @@ async def admin_check(message: types.Message):
 # Команда удаления
 @dp.message_handler(Command('del'), state="*")
 async def start_del_cmd_handler(message: types.Message):
+
     # проверяем, является ли пользователь администратором или находится ли его идентификатор в списке разрешенных
     if not await admin_check(message):
         return await message.answer("Вы не являетесь администратором или не имеете разрешения!")
@@ -130,6 +138,7 @@ async def start_del_cmd_handler(message: types.Message):
 
 @dp.message_handler(state=Del.name)
 async def process_del_name(message: types.Message, state: FSMContext):
+
     # проверяем, является ли пользователь администратором
     if not await admin_check(message):
         return await message.answer("Вы не являетесь администратором!")
@@ -147,46 +156,76 @@ async def process_del_name(message: types.Message, state: FSMContext):
 # обработчик команды /rating
 @dp.message_handler(Command('rating'))
 async def start_rating_cmd_handler(message: types.Message):
-    await message.answer("Введите название места, которому хотите изменить рейтинг:")
+
+    state = dp.current_state(user=message.from_user.id)
+    async with state.proxy() as data:
+        data['messages_to_delete'] = [message.message_id]
+
+    sent_message = await message.answer("Введите название места, которому хотите изменить рейтинг:")
+    async with state.proxy() as data:
+        data['messages_to_delete'].append(sent_message.message_id)
+
     await Rating.name.set()
 
 
-# обработчик ввода имени места при обновлении рейтинга
 @dp.message_handler(state=Rating.name)
 async def process_rating_name(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         data['name'] = message.text.lower()
-    await message.answer("Введите оценку от 1 до 10:")
+        data['messages_to_delete'].append(message.message_id)
+
+    sent_message = await message.answer("Введите оценку от 1 до 10:")
+    async with state.proxy() as data:
+        data['messages_to_delete'].append(sent_message.message_id)
+
     await Rating.next()
 
 
-# обработчик ввода оценки
 @dp.message_handler(state=Rating.rating)
 async def process_rating(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         data['rating'] = int(message.text)
+        data['messages_to_delete'].append(message.message_id)
+
         # обновляем рейтинг места в базе данных
         async with aiosqlite.connect('places.db') as db:
             cursor = await db.cursor()
+            await cursor.execute('SELECT * FROM places WHERE name = ?', (data['name'],))
+            place = await cursor.fetchone()
+            if place is None:
+                return await message.answer("Такого места не существует в базе данных.")
+
             await cursor.execute('CREATE TABLE IF NOT EXISTS ratings (name text, rating integer)')
             await cursor.execute('INSERT INTO ratings (name, rating) VALUES (?, ?)', (data['name'], data['rating']))
             await cursor.execute('SELECT AVG(rating) FROM ratings WHERE name = ?', (data['name'],))
             avg_rating = await cursor.fetchone()
-            if avg_rating is None:
-                return await message.answer("Такого места не существует в базе данных.")
             await cursor.execute('UPDATE places SET rating = ? WHERE name = ?', (avg_rating[0], data['name']))
             await db.commit()
-    await message.answer("Рейтинг успешно обновлен!")
+
+    sent_message = await message.answer("Рейтинг успешно обновлен!")
+    async with state.proxy() as data:
+        data['messages_to_delete'].append(sent_message.message_id)
+
+    await asyncio.sleep(3)  # Пауза 3 секунды
+
+    async with state.proxy() as data:
+        for msg_id in data['messages_to_delete']:
+            await bot.delete_message(chat_id=message.chat.id, message_id=msg_id)
+
     await state.finish()
 
 
 @dp.message_handler(Command('poll'))
 async def poll_command(message: types.Message):
+
+    # Удаляем сообщение с командой от пользователя
+    await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
+
     await bot.send_poll(
         chat_id=message.chat.id,
         question="Выберите время и день недели:",
         options=["Суббота | 12:00", "Суббота | 13:00", "Суббота | 14:00", "Суббота | 15:00", "Суббота | 17:00",
-                 "Воскресенье | 12:00", "Воскресенье | 13:00", "Воскресенье | 14:00", "Воскресенье | 15:00", "Воскресенье | 17:00"]
+                 "Воскресенье | 12:00", "Воскресенье | 13:00", "Воскресенье | 14:00", "Воскресенье | 15:00", "Воскресенье | 17:00"],
     )
 
 
@@ -195,12 +234,16 @@ async def send_poll():
         chat_id=-857034880,
         question="Выберите время и день недели:",
         options=["Суббота | 12:00", "Суббота | 13:00", "Суббота | 14:00", "Суббота | 15:00", "Суббота | 17:00",
-                 "Воскресенье | 12:00", "Воскресенье | 13:00", "Воскресенье | 14:00", "Воскресенье | 15:00", "Воскресенье | 17:00"]
+                 "Воскресенье | 12:00", "Воскресенье | 13:00", "Воскресенье | 14:00", "Воскресенье | 15:00", "Воскресенье | 17:00"],
     )
 
 
 @dp.message_handler(Command('random'))
 async def random_place(message: types.Message):
+
+    # Удаляем сообщение с командой от пользователя
+    await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
+
     async with aiosqlite.connect('places.db') as db:
         cursor = await db.cursor()
         await cursor.execute('SELECT * FROM places')
