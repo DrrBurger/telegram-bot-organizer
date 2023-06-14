@@ -275,20 +275,37 @@ async def process_rating_name(message: types.Message, state: FSMContext):
 async def process_rating(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         data['messages_to_delete'].append(message.message_id)
+
+        # Добавляем счетчик попыток
+        if 'attempt_counter' not in data:
+            data['attempt_counter'] = 2
+        else:
+            data['attempt_counter'] -= 1
+
         try:
             data['rating'] = int(message.text)
             if not 1 <= data['rating'] <= 10:
                 raise ValueError()
+
         except ValueError:
-            sent_message = await message.answer("Оценка должна быть числом от 1 до 10. Попробуйте ещё раз.")
-            data['messages_to_delete'].append(sent_message.message_id)
-            await asyncio.sleep(3)
-            for msg_id in data['messages_to_delete']:
-                try:
-                    await bot.delete_message(chat_id=message.chat.id, message_id=msg_id)
-                except exceptions.MessageCantBeDeleted:
-                    continue
-            await state.reset_state()
+            if data['attempt_counter'] > 0:  # Пользователь может попробовать еще раз
+                sent_message = await message.answer(f"Оценка должна быть числом от 1 до 10. Попробуйте ещё раз. {data['attempt_counter']}")
+                data['messages_to_delete'].append(sent_message.message_id)
+            else:  # Пользователь использовал все попытки
+                sent_message = await message.answer("Вы исчерпали все попытки.")
+                data['messages_to_delete'].append(sent_message.message_id)
+
+                # Удаляем все сообщения
+                await asyncio.sleep(2)
+                for msg_id in data['messages_to_delete']:
+                    try:
+                        await bot.delete_message(chat_id=message.chat.id, message_id=msg_id)
+                    except exceptions.MessageCantBeDeleted:
+                        continue
+
+                data['attempt_counter'] = 3  # Сбрасываем счетчик попыток
+                await state.reset_state()  # Сбрасываем состояние
+
             return
 
         # обновляем рейтинг места в базе данных
