@@ -311,7 +311,6 @@ async def random_place(message: types.Message):
 
 @dp.message_handler(Command('poll'))
 async def poll_command(message: types.Message):
-    print(message.chat.id)
 
     # Удаляем сообщение с командой от пользователя
     await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
@@ -379,16 +378,9 @@ async def check_poll_results():
 
 if __name__ == '__main__':
     scheduler = AsyncIOScheduler()
-    trigger = CronTrigger(day_of_week='wed', hour=14, minute=35)
-    trigger1 = CronTrigger(day_of_week='wed', hour=14, minute=35, second=10)
-
-    trigger2 = CronTrigger(day_of_week='wed', hour=14, minute=36)
-    trigger3 = CronTrigger(day_of_week='wed', hour=14, minute=36, second=10)
-
+    trigger = CronTrigger(day_of_week='mon', hour=12)
+    trigger1 = CronTrigger(day_of_week='fri', hour=12)
     scheduler.add_job(send_poll, trigger)
     scheduler.add_job(check_poll_results, trigger1)
-
-    scheduler.add_job(send_poll, trigger2)
-    scheduler.add_job(check_poll_results, trigger3)
     scheduler.start()
     executor.start_polling(dp, skip_updates=True)
