@@ -222,6 +222,23 @@ async def process_rating_name(message: types.Message, state: FSMContext):
         data['name'] = message.text.lower()
         data['messages_to_delete'].append(message.message_id)
 
+    # проверяем существование места в базе данных
+    async with aiosqlite.connect('places.db') as db:
+        cursor = await db.cursor()
+        await cursor.execute('SELECT * FROM places WHERE name = ?', (data['name'],))
+        place = await cursor.fetchone()
+        if place is None:
+            sent_message = await message.answer("Такого места не существует в базе данных. Попробуйте ещё раз.")
+            data['messages_to_delete'].append(sent_message.message_id)
+            await asyncio.sleep(2)
+            for msg_id in data['messages_to_delete']:
+                try:
+                    await bot.delete_message(chat_id=message.chat.id, message_id=msg_id)
+                except exceptions.MessageCantBeDeleted:
+                    continue
+            await state.reset_state()
+            return
+
     sent_message = await message.answer("Введите оценку от 1 до 10:")
     async with state.proxy() as data:
         data['messages_to_delete'].append(sent_message.message_id)
