@@ -143,11 +143,18 @@ async def start_del_cmd_handler(message: types.Message) -> None:
     state = dp.current_state(user=message.from_user.id)
     async with state.proxy() as data:
         data['messages_to_delete'] = [message.message_id]
+        data['attempts'] = 3
 
     # проверяем, является ли пользователь администратором или находится ли его идентификатор в списке разрешенных
     if not await admin_check(message):
         sent_message = await message.answer("Вы не являетесь администратором или не имеете разрешения! 🤬")
         data['messages_to_delete'].append(sent_message.message_id)
+        async with state.proxy() as data:
+            for msg_id in data['messages_to_delete']:
+                try:
+                    await bot.delete_message(chat_id=message.chat.id, message_id=msg_id)
+                except exceptions.MessageCantBeDeleted:
+                    continue
         return
 
     sent_message = await message.answer("Введите название места, которое нужно удалить:🥸")
@@ -182,6 +189,25 @@ async def process_del_name(message: types.Message, state: FSMContext):
 
         async with aiosqlite.connect('places.db') as db:
             cursor = await db.cursor()
+            await cursor.execute('SELECT * FROM places WHERE name = ?', (data['name'],))
+            result = await cursor.fetchone()
+
+            if result is None:
+                data['attempts'] -= 1
+                if data['attempts'] > 0:
+                    sent_message = await message.answer(f"Место '{data['name']}' не найдено. Попробуйте снова:")
+                    data['messages_to_delete'].append(sent_message.message_id)
+                else:
+                    sent_message = await message.answer("Превышено количество попыток. Операция отменена.")
+                    data['messages_to_delete'].append(sent_message.message_id)
+                    async with state.proxy() as data:
+                        for msg_id in data['messages_to_delete']:
+                            try:
+                                await bot.delete_message(chat_id=message.chat.id, message_id=msg_id)
+                            except exceptions.MessageCantBeDeleted:
+                                continue
+                return
+
             await cursor.execute('DELETE FROM places WHERE name = ?', (data['name'],))
             await db.commit()
 
