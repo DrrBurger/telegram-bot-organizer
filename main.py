@@ -97,7 +97,7 @@ async def process_address(message: types.Message, state: FSMContext):
 
     await state.finish()
 
-    # удаление всех сообщений через 3 сек после добавления места (во избежание захламления)
+    # удаление всех сообщений через 1 сек после добавления места (во избежание захламления)
     await asyncio.sleep(1)
     for msg_id in data['message_id']:
         await bot.delete_message(chat_id=message.chat.id, message_id=msg_id)
@@ -195,10 +195,11 @@ async def process_del_name(message: types.Message, state: FSMContext):
             if result is None:
                 data['attempts'] -= 1
                 if data['attempts'] > 0:
-                    sent_message = await message.answer(f"Место '{data['name']}' не найдено. Попробуйте снова:")
+                    sent_message = await message.answer(f"❌ Место '{data['name']}' не найдено. Попробуйте снова: \
+                                                        попыток осталось {data['attempts']} ❌")
                     data['messages_to_delete'].append(sent_message.message_id)
                 else:
-                    sent_message = await message.answer("Превышено количество попыток. Операция отменена.")
+                    sent_message = await message.answer("Превышено количество попыток. Операция отменена. 💥")
                     data['messages_to_delete'].append(sent_message.message_id)
 
                     # Удаление сообщений
