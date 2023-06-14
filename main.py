@@ -324,29 +324,7 @@ async def poll_command(message: types.Message):
     )
 
 
-async def send_poll():
-    async with aiosqlite.connect('places.db') as db:
-        cursor = await db.cursor()
-        await cursor.execute('SELECT * FROM places ORDER BY RANDOM() LIMIT 7')
-        places = await cursor.fetchall()
-        place_options = [f"Место: {place[0]} | Адрес: {place[1]} | Рейтинг: {place[2]}" for place in places]
-
-    await bot.send_poll(
-        chat_id=-857034880,
-        question="Выберите время и день недели:",
-        options=["Суббота | 12:00", "Суббота | 13:00", "Суббота | 14:00", "Суббота | 15:00", "Суббота | 17:00",
-                 "Воскресенье | 12:00", "Воскресенье | 13:00", "Воскресенье | 14:00", "Воскресенье | 15:00", "Воскресенье | 17:00"],
-        is_anonymous=False,
-    )
-
-    await bot.send_poll(
-        chat_id=-857034880,
-        question="Выберите место:",
-        options=place_options,
-        is_anonymous=False,
-    )
-
-
+poll_data = {}
 poll_results = defaultdict(lambda: defaultdict(int))
 
 
@@ -356,18 +334,50 @@ async def handle_poll_answer(poll_answer: types.PollAnswer):
         poll_results[poll_answer.poll_id][option_id] += 1
 
 
+async def send_poll():
+    async with aiosqlite.connect('places.db') as db:
+        cursor = await db.cursor()
+        await cursor.execute('SELECT * FROM places ORDER BY RANDOM() LIMIT 7')
+        places = await cursor.fetchall()
+        place_options = [f"Место: {place[0]} | Адрес: {place[1]} | Рейтинг: {place[2]}" for place in places]
+
+    poll_message1 = await bot.send_poll(
+        chat_id=-857034880,
+        question="Выберите время и день недели:",
+        options=["Суббота | 12:00", "Суббота | 13:00", "Суббота | 14:00", "Суббота | 15:00", "Суббота | 17:00",
+                 "Воскресенье | 12:00", "Воскресенье | 13:00", "Воскресенье | 14:00", "Воскресенье | 15:00", "Воскресенье | 17:00"],
+        is_anonymous=False,
+    )
+
+    poll_data[poll_message1.poll.id] = poll_message1.poll.options
+
+    poll_message2 = await bot.send_poll(
+        chat_id=-857034880,
+        question="Выберите место:",
+        options=place_options,
+        is_anonymous=False,
+    )
+
+    poll_data[poll_message2.poll.id] = poll_message2.poll.options
+
+
 async def check_poll_results():
+    results_text = []
+
     for poll_id, results in poll_results.items():
         max_votes = max(count for count in results.values())
-        winners = [option for option, count in results.items() if count == max_votes]
+        winners = [poll_data[poll_id][option].text for option, count in results.items() if count == max_votes]
 
-        await bot.send_message(-857034880, f"Варианты с наибольшим числом голосов: {winners}")
+        results_text.append(winners[0])
+
+    await bot.send_message(-857034880, f'♨️Уважемые причастные! Данные вашей встречи!♨️\n\n'
+                           f'Когда: {results_text[0]}\n{results_text[1]}')
 
 if __name__ == '__main__':
     scheduler = AsyncIOScheduler()
-    trigger = CronTrigger(day_of_week='wed', hour=13, minute=9)
+    trigger = CronTrigger(day_of_week='wed', hour=13, minute=45)
+    trigger1 = CronTrigger(day_of_week='wed', hour=13, minute=45, second=10)
     scheduler.add_job(send_poll, trigger)
-    trigger1 = CronTrigger(day_of_week='wed', hour=13, minute=10)
     scheduler.add_job(check_poll_results, trigger1)
     scheduler.start()
     executor.start_polling(dp, skip_updates=True)
