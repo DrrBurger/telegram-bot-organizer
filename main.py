@@ -1,4 +1,5 @@
 import asyncio
+from collections import defaultdict
 import logging
 import random
 
@@ -289,6 +290,25 @@ async def process_rating(message: types.Message, state: FSMContext):
     await state.finish()
 
 
+@dp.message_handler(Command('random'))
+async def random_place(message: types.Message):
+
+    # Удаляем сообщение с командой от пользователя
+    await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
+
+    async with aiosqlite.connect('places.db') as db:
+        cursor = await db.cursor()
+        await cursor.execute('SELECT * FROM places')
+        rows = await cursor.fetchall()
+        if rows:
+            random_row = random.choice(rows)
+            await message.answer(f"Название: {random_row[0]}\n"
+                                 f"Адрес: {random_row[1]}\n"
+                                 f"Рейтинг: {random_row[2]}\n")
+        else:
+            await message.answer("В базе данных пока нет интересных мест.")
+
+
 @dp.message_handler(Command('poll'))
 async def poll_command(message: types.Message):
     print(message.chat.id)
@@ -327,27 +347,27 @@ async def send_poll():
     )
 
 
-@dp.message_handler(Command('random'))
-async def random_place(message: types.Message):
+poll_results = defaultdict(lambda: defaultdict(int))
 
-    # Удаляем сообщение с командой от пользователя
-    await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
 
-    async with aiosqlite.connect('places.db') as db:
-        cursor = await db.cursor()
-        await cursor.execute('SELECT * FROM places')
-        rows = await cursor.fetchall()
-        if rows:
-            random_row = random.choice(rows)
-            await message.answer(f"Название: {random_row[0]}\n"
-                                 f"Адрес: {random_row[1]}\n"
-                                 f"Рейтинг: {random_row[2]}\n")
-        else:
-            await message.answer("В базе данных пока нет интересных мест.")
+@dp.poll_answer_handler()
+async def handle_poll_answer(poll_answer: types.PollAnswer):
+    for option_id in poll_answer.option_ids:
+        poll_results[poll_answer.poll_id][option_id] += 1
+
+
+async def check_poll_results():
+    for poll_id, results in poll_results.items():
+        max_votes = max(count for count in results.values())
+        winners = [option for option, count in results.items() if count == max_votes]
+
+        await bot.send_message(-857034880, f"Варианты с наибольшим числом голосов: {winners}")
 
 if __name__ == '__main__':
     scheduler = AsyncIOScheduler()
-    trigger = CronTrigger(day_of_week='wed', hour=12, minute=11)
+    trigger = CronTrigger(day_of_week='wed', hour=13, minute=9)
     scheduler.add_job(send_poll, trigger)
+    trigger1 = CronTrigger(day_of_week='wed', hour=13, minute=10)
+    scheduler.add_job(check_poll_results, trigger1)
     scheduler.start()
     executor.start_polling(dp, skip_updates=True)
