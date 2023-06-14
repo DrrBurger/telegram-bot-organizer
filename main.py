@@ -139,26 +139,28 @@ async def admin_check(message: types.Message):
 @dp.message_handler(Command('del'), state="*")
 async def start_del_cmd_handler(message: types.Message) -> None:
 
-    # сохраняем сообщения в список для дальнейшего удаления
     state = dp.current_state(user=message.from_user.id)
+
     async with state.proxy() as data:
+        # сохраняем сообщения в список для дальнейшего удаления
         data['messages_to_delete'] = [message.message_id]
         data['attempts'] = 3
 
-    # проверяем, является ли пользователь администратором или находится ли его идентификатор в списке разрешенных
-    if not await admin_check(message):
-        sent_message = await message.answer("Вы не являетесь администратором или не имеете разрешения! 🤬")
-        data['messages_to_delete'].append(sent_message.message_id)
-        async with state.proxy() as data:
+        # проверяем, является ли пользователь администратором или находится ли его идентификатор в списке разрешенных
+        if not await admin_check(message):
+            sent_message = await message.answer("Вы не являетесь администратором или не имеете разрешения! 🤬")
+            data['messages_to_delete'].append(sent_message.message_id)
+            # Добавляем задержку
+            await asyncio.sleep(1)
+
             for msg_id in data['messages_to_delete']:
                 try:
                     await bot.delete_message(chat_id=message.chat.id, message_id=msg_id)
                 except exceptions.MessageCantBeDeleted:
                     continue
-        return
+            return
 
-    sent_message = await message.answer("Введите название места, которое нужно удалить:🥸")
-    async with state.proxy() as data:
+        sent_message = await message.answer("Введите название места, которое нужно удалить:🥸")
         data['messages_to_delete'].append(sent_message.message_id)
 
     await Del.name.set()
