@@ -235,10 +235,14 @@ async def process_rating_name(message: types.Message, state: FSMContext):
         place = await cursor.fetchone()
         if place is None:
             async with state.proxy() as data:
-                if data['attempt_counter'] > 0:  # Пользователь может попробовать еще раз
+
+                # Пользователь может попробовать еще раз
+                if data['attempt_counter'] > 0:
                     sent_message = await message.answer(f"Такого места не существует в базе данных. Попробуйте ещё раз. Попыток осталось {data['attempt_counter']} ")
                     data['messages_to_delete'].append(sent_message.message_id)
-                else:  # Пользователь использовал все попытки
+
+                # Пользователь использовал все попытки
+                else:
                     sent_message = await message.answer("Такого места не существует в базе данных. Вы исчерпали все попытки.")
                     data['messages_to_delete'].append(sent_message.message_id)
 
