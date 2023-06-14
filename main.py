@@ -222,7 +222,7 @@ async def process_rating_name(message: types.Message, state: FSMContext):
         data['name'] = message.text.lower()
         data['messages_to_delete'].append(message.message_id)
 
-        # Добавляем счетчик попыток
+        # добавляем счетчик попыток
         if 'attempt_counter' not in data:
             data['attempt_counter'] = 2
         else:
@@ -238,12 +238,13 @@ async def process_rating_name(message: types.Message, state: FSMContext):
 
                 # Пользователь может попробовать еще раз
                 if data['attempt_counter'] > 0:
-                    sent_message = await message.answer(f"Такого места не существует в базе данных. Попробуйте ещё раз. Попыток осталось {data['attempt_counter']} ")
+                    sent_message = await message.answer(f"Такого места не существует в базе данных.\
+                        Попробуйте ещё раз. Попыток осталось {data['attempt_counter']} ")
                     data['messages_to_delete'].append(sent_message.message_id)
 
-                # Пользователь использовал все попытки
+                # пользователь использовал все попытки
                 else:
-                    sent_message = await message.answer("Такого места не существует в базе данных. Вы исчерпали все попытки.")
+                    sent_message = await message.answer("Вы исчерпали все попытки...")
                     data['messages_to_delete'].append(sent_message.message_id)
 
                     # Удаляем все сообщения
@@ -289,10 +290,11 @@ async def process_rating(message: types.Message, state: FSMContext):
 
         except ValueError:
             if data['attempt_counter'] > 0:  # Пользователь может попробовать еще раз
-                sent_message = await message.answer(f"Оценка должна быть числом от 1 до 10. Попробуйте ещё раз. {data['attempt_counter']}")
+                sent_message = await message.answer(f"Оценка должна быть целым числом от 1 до 10.\
+                                                    Попробуйте ещё раз. Попыток осталось: {data['attempt_counter']}")
                 data['messages_to_delete'].append(sent_message.message_id)
             else:  # Пользователь использовал все попытки
-                sent_message = await message.answer("Вы исчерпали все попытки.")
+                sent_message = await message.answer("Вы исчерпали все попытки...")
                 data['messages_to_delete'].append(sent_message.message_id)
 
                 # Удаляем все сообщения
