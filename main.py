@@ -362,7 +362,7 @@ async def send_poll():
 
 
 async def check_poll_results():
-    results_text = []
+    results_text = list()
 
     for poll_id, results in poll_results.items():
         max_votes = max(count for count in results.values())
@@ -373,11 +373,22 @@ async def check_poll_results():
     await bot.send_message(-857034880, f'♨️Уважемые причастные! Данные вашей встречи!♨️\n\n'
                            f'Когда: {results_text[0]}\n{results_text[1]}')
 
+    # Очищаем данные опроса
+    poll_data.clear()
+    poll_results.clear()
+
 if __name__ == '__main__':
     scheduler = AsyncIOScheduler()
-    trigger = CronTrigger(day_of_week='wed', hour=13, minute=45)
-    trigger1 = CronTrigger(day_of_week='wed', hour=13, minute=45, second=10)
+    trigger = CronTrigger(day_of_week='wed', hour=14, minute=35)
+    trigger1 = CronTrigger(day_of_week='wed', hour=14, minute=35, second=10)
+
+    trigger2 = CronTrigger(day_of_week='wed', hour=14, minute=36)
+    trigger3 = CronTrigger(day_of_week='wed', hour=14, minute=36, second=10)
+
     scheduler.add_job(send_poll, trigger)
     scheduler.add_job(check_poll_results, trigger1)
+
+    scheduler.add_job(send_poll, trigger2)
+    scheduler.add_job(check_poll_results, trigger3)
     scheduler.start()
     executor.start_polling(dp, skip_updates=True)
