@@ -401,20 +401,6 @@ async def random_place(message: types.Message):
             await message.answer("В базе данных пока нет интересных мест. 🤷🏽‍♂️")
 
 
-@dp.message_handler(Command('poll'))
-async def poll_command(message: types.Message):
-
-    # Удаляем сообщение с командой от пользователя
-    await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
-
-    await bot.send_poll(
-        chat_id=message.chat.id,
-        question="Выберите время и день недели:",
-        options=["Суббота | 12:00", "Суббота | 13:00", "Суббота | 14:00", "Суббота | 15:00", "Суббота | 17:00",
-                 "Воскресенье | 12:00", "Воскресенье | 13:00", "Воскресенье | 14:00", "Воскресенье | 15:00", "Воскресенье | 17:00"],
-    )
-
-
 poll_data = {}
 poll_results = defaultdict(lambda: defaultdict(int))
 
