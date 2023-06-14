@@ -201,103 +201,87 @@ async def process_del_name(message: types.Message, state: FSMContext):
     await state.finish()
 
 
-# хэндлер реагирующий на команду /rating
-@dp.message_handler(Command('rating'))
-async def start_rating_cmd_handler(message: types.Message):
-    state = dp.current_state(user=message.from_user.id)
-    async with state.proxy() as data:
-        data['messages_to_delete'] = [message.message_id]
-
-    sent_message = await message.answer("Введите название места, которому хотите поставить оценку:")
+async def ask_user(message, state, question):
+    sent_message = await message.answer(question)
     async with state.proxy() as data:
         data['messages_to_delete'].append(sent_message.message_id)
 
+
+async def reset_with_message(message, state, error_message):
+    await ask_user(message, state, error_message)
+    await asyncio.sleep(2)
+    async with state.proxy() as data:
+        for msg_id in data['messages_to_delete']:
+            try:
+                await bot.delete_message(chat_id=message.chat.id, message_id=msg_id)
+            except exceptions.MessageCantBeDeleted:
+                continue
+    await state.reset_state(with_data=False)
+
+
+@dp.message_handler(Command('rating'))
+async def start_rating_cmd_handler(message: types.Message):
+    state = dp.current_state(user=message.from_user.id)
+    await state.set_data({
+        'messages_to_delete': [message.message_id],
+        'attempts': 3
+    })
+    await ask_user(message, state, "Введите название места, которому хотите поставить оценку:")
     await Rating.name.set()
 
 
-# состояние ввода места вызванное после команды /rating
 @dp.message_handler(state=Rating.name)
 async def process_rating_name(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         data['name'] = message.text.lower()
-        data['messages_to_delete'].append(message.message_id)
+        data['attempts'] -= 1
 
-        # проверяем, существует ли место в базе данных
-        async with aiosqlite.connect('places.db') as db:
-            cursor = await db.cursor()
-            await cursor.execute('SELECT * FROM places WHERE name = ?', (data['name'],))
-            place = await cursor.fetchone()
+    async with aiosqlite.connect('places.db') as db:
+        cursor = await db.cursor()
+        await cursor.execute('SELECT * FROM places WHERE name = ?', (data['name'],))
+        place = await cursor.fetchone()
 
-        # если места нет, уведомляем об этом пользователя и предлагаем ещё две попытки
-        if place is None:
-            data['attempts'] = data.get('attempts', 3) - 1
+    if place is None:
+        async with state.proxy() as data:
             if data['attempts'] > 0:
-                sent_message = await message.answer(f"Такого места не существует в базе данных. У вас осталось {data['attempts']} попыток.")
-                data['messages_to_delete'].append(sent_message.message_id)
+                await ask_user(message, state, f"Такого места не существует в базе данных. У вас осталось {data['attempts']} попыток.")
             else:
-                sent_message = await message.answer("Такого места не существует в базе данных. Попытки исчерпаны.")
-                data['messages_to_delete'].append(sent_message.message_id)
-                await asyncio.sleep(2)
-                for msg_id in data['messages_to_delete']:
-                    try:
-                        await bot.delete_message(chat_id=message.chat.id, message_id=msg_id)
-                    except exceptions.MessageCantBeDeleted:
-                        continue
-                data['attempts'] = 3
-                await state.reset_state()
-                return
-        else:
-            sent_message = await message.answer("Введите оценку от 1 до 10:")
-            async with state.proxy() as data:
-                data['messages_to_delete'].append(sent_message.message_id)
+                await reset_with_message(message, state, "Такого места не существует в базе данных. Попытки исчерпаны.")
+        return
 
-            await Rating.next()
+    async with state.proxy() as data:
+        data['attempts'] = 3
+
+    await ask_user(message, state, "Введите оценку от 1 до 10:")
+    await Rating.next()
 
 
-# состояние ввода оценки вызванное предыдущим состоянием
 @dp.message_handler(state=Rating.rating)
 async def process_rating(message: types.Message, state: FSMContext):
-    async with state.proxy() as data:
-        data['messages_to_delete'].append(message.message_id)
-        try:
-            data['rating'] = int(message.text)
-            if not 1 <= data['rating'] <= 10:
-                raise ValueError()
-        except ValueError:
-            data['attempts'] = data.get('attempts', 3) - 1
+    try:
+        rating = int(message.text)
+        if not 1 <= rating <= 10:
+            raise ValueError()
+    except ValueError:
+        async with state.proxy() as data:
+            data['attempts'] -= 1
             if data['attempts'] > 0:
-                sent_message = await message.answer(f"Оценка должна быть числом от 1 до 10. У вас осталось {data['attempts']} попыток.")
-                data['messages_to_delete'].append(sent_message.message_id)
-                return
+                await ask_user(message, state, f"Оценка должна быть числом от 1 до 10. У вас осталось {data['attempts']} попыток.")
             else:
-                sent_message = await message.answer("Оценка должна быть числом от 1 до 10. Попытки исчерпаны.")
-                data['messages_to_delete'].append(sent_message.message_id)
-                await asyncio.sleep(2)
-                for msg_id in data['messages_to_delete']:
-                    try:
-                        await bot.delete_message(chat_id=message.chat.id, message_id=msg_id)
-                    except exceptions.MessageCantBeDeleted:
-                        continue
-                data['attempts'] = 3  # Обновляем счетчик попыток перед сбросом состояния
-                await state.reset_state()
-                return
+                await reset_with_message(message, state, "Оценка должна быть числом от 1 до 10. Попытки исчерпаны.")
+        return
 
-        # обновляем рейтинг места в базе данных
-        if data.get('rating') is not None:
-            async with aiosqlite.connect('places.db') as db:
-                cursor = await db.cursor()
-                await cursor.execute('CREATE TABLE IF NOT EXISTS ratings (name text, rating integer)')
-                await cursor.execute('INSERT INTO ratings (name, rating) VALUES (?, ?)', (data['name'], data['rating']))
-                await cursor.execute('SELECT AVG(rating) FROM ratings WHERE name = ?', (data['name'],))
-                avg_rating = await cursor.fetchone()
-                await cursor.execute('UPDATE places SET rating = ? WHERE name = ?', (avg_rating[0], data['name']))
-                await db.commit()
+    async with aiosqlite.connect('places.db') as db, state.proxy() as data:
+        cursor = await db.cursor()
+        await cursor.execute('CREATE TABLE IF NOT EXISTS ratings (name text, rating integer)')
+        await cursor.execute('INSERT INTO ratings (name, rating) VALUES (?, ?)', (data['name'], rating))
+        await cursor.execute('SELECT AVG(rating) FROM ratings WHERE name = ?', (data['name'],))
+        avg_rating = await cursor.fetchone()
+        await cursor.execute('UPDATE places SET rating = ? WHERE name = ?', (avg_rating[0], data['name']))
+        await db.commit()
 
-    sent_message = await message.answer("Рейтинг успешно обновлен!")
-    async with state.proxy() as data:
-        data['messages_to_delete'].append(sent_message.message_id)
-
-    await asyncio.sleep(2)  # Пауза 2 секунды что бы успеть прочитать
+    await ask_user(message, state, "Рейтинг успешно обновлен!")
+    await asyncio.sleep(2)
 
     async with state.proxy() as data:
         for msg_id in data['messages_to_delete']:
