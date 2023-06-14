@@ -200,31 +200,34 @@ async def process_del_name(message: types.Message, state: FSMContext):
                 else:
                     sent_message = await message.answer("Превышено количество попыток. Операция отменена.")
                     data['messages_to_delete'].append(sent_message.message_id)
-                    async with state.proxy() as data:
-                        for msg_id in data['messages_to_delete']:
-                            try:
-                                await bot.delete_message(chat_id=message.chat.id, message_id=msg_id)
-                            except exceptions.MessageCantBeDeleted:
-                                continue
+
+                    # Удаление сообщений
+                    for msg_id in data['messages_to_delete']:
+                        try:
+                            await bot.delete_message(chat_id=message.chat.id, message_id=msg_id)
+                        except exceptions.MessageCantBeDeleted:
+                            continue
+                    data['attempt_counter'] = 3  # Сбрасываем счетчик попыток
+                    await state.reset_state()  # Сбрасываем состояние
                 return
 
             await cursor.execute('DELETE FROM places WHERE name = ?', (data['name'],))
             await db.commit()
 
-    sent_message = await message.answer("✅ Место успешно удалено! ✅")
-    async with state.proxy() as data:
-        data['messages_to_delete'].append(sent_message.message_id)
+            sent_message = await message.answer("✅ Место успешно удалено! ✅")
+            async with state.proxy() as data:
+                data['messages_to_delete'].append(sent_message.message_id)
 
-    await asyncio.sleep(1)
-    # удаляем сообщения после удаления места
-    async with state.proxy() as data:
-        for msg_id in data['messages_to_delete']:
-            try:
-                await bot.delete_message(chat_id=message.chat.id, message_id=msg_id)
-            except exceptions.MessageCantBeDeleted:
-                continue
+            await asyncio.sleep(1)
+            # удаляем сообщения после удаления места
+            async with state.proxy() as data:
+                for msg_id in data['messages_to_delete']:
+                    try:
+                        await bot.delete_message(chat_id=message.chat.id, message_id=msg_id)
+                    except exceptions.MessageCantBeDeleted:
+                        continue
 
-    await state.finish()
+            await state.finish()
 
 
 # хэндлер реагирующий на команду /rating
