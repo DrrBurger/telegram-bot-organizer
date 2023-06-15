@@ -394,9 +394,12 @@ async def random_place(message: types.Message):
         rows = await cursor.fetchall()
         if rows:
             random_row = random.choice(rows)
-            await message.answer(f"Название: {random_row[0]}\n"
-                                 f"Адрес: {random_row[1]}\n"
-                                 f"Рейтинг: {random_row[2]}\n")
+            answer = await message.answer("Случайное место!!!😻\n"
+                                          f"Название: {random_row[0]}\n"
+                                          f"Адрес: {random_row[1]}\n"
+                                          f"Рейтинг: {random_row[2]}\n")
+            await asyncio.sleep(5)
+            await bot.delete_message(chat_id=message.chat.id, message_id=answer.message_id)
         else:
             await message.answer("В базе данных пока нет интересных мест. 🤷🏽‍♂️")
 
