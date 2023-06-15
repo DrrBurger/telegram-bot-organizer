@@ -10,6 +10,7 @@ from aiogram.dispatcher.filters import Command
 from aiogram.utils import executor
 
 import aiosqlite
+from databases.database import create_db
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -19,21 +20,25 @@ from config_data.config import Config, load_config
 from states.states import Del, Place, Rating
 
 
-# Логирование бота
+# Устанавливаем настройки логирования для отладки бота
 logging.basicConfig(level=logging.INFO)
 
-# загрузка конфига с данными
+# Загрузка конфига с данными для бота
 config: Config = load_config()
 
-# Инициализация бота и диспетчера
+# Создаем экземпляры бота, хранилища и диспетчера
+# передавая в качестве аргументов токен бота и хранилище состояний
 bot = Bot(token=config.tg_bot.token)
 storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)
 
 
-# хэндлер реагирующий на команду /start и /help
 @dp.message_handler(Command(commands=['start', 'help']))
 async def help_command(message: types.Message) -> None:
+    # Функция-обработчик команд '/start' и '/help'
+    # Если пользователь отправляет одну из этих команд
+    # бот отвечает соответствующим сообщением
+
     if 'start' in message.text:
         await bot.send_message(message.chat.id, "Привет, я ваш бот!\nВсе команды - /help")
     else:
@@ -50,19 +55,23 @@ async def help_command(message: types.Message) -> None:
     await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
 
 
-# хэндлер реагирующий на команду /add
 @dp.message_handler(Command('add'))
 async def start_cmd_handler(message: types.Message) -> None:
+    # Функция-обработчик команды '/add'
+    # Когда пользователь отправляет эту команду,
+    # начинается диалог для добавления нового места
+
     state = dp.current_state(chat=message.chat.id, user=message.from_user.id)
-    # начинаем диалог
     bot_message = await message.answer("Введите название места:👾")
     await state.update_data(message_id=[message.message_id, bot_message.message_id])  # сохраняем идентификаторы сообщений
     await Place.name.set()
 
 
-# состояние ввода 'места' вызванное после команды /add
 @dp.message_handler(state=Place.name)
 async def process_name(message: types.Message, state: FSMContext):
+    # Этот обработчик активируется после команды '/add'
+    # и спрашивает у пользователя название места
+
     async with state.proxy() as data:
         data['name'] = message.text.lower()
         data['message_id'].extend([message.message_id])  # сохраняем идентификатор сообщения
@@ -71,14 +80,16 @@ async def process_name(message: types.Message, state: FSMContext):
     await Place.next()
 
 
-# состояние ввода 'адреса' вызванное после предыдущего состояния
 @dp.message_handler(state=Place.address)
 async def process_address(message: types.Message, state: FSMContext):
+    # Этот обработчик активируется после ввода имени места и запрашивает адрес места
+    # Он также проверяет, существует ли уже это место в базе данных и, если нет, добавляет его
+
     async with state.proxy() as data:
         data['address'] = message.text
         data['message_id'].extend([message.message_id])  # сохраняем идентификатор сообщения
 
-        # добавляем место в базу данных
+        # Добавляем место в базу данных
         async with aiosqlite.connect('places.db') as db:
             cursor = await db.cursor()
             await cursor.execute('CREATE TABLE IF NOT EXISTS places (name text, address text, rating integer DEFAULT 0)')
@@ -103,14 +114,15 @@ async def process_address(message: types.Message, state: FSMContext):
         await bot.delete_message(chat_id=message.chat.id, message_id=msg_id)
 
 
-#  хэндлер реагирующий на команды /place
 @dp.message_handler(Command('place'))
 async def show_places(message: types.Message):
+    # Обработчик команды '/place', выводит список всех мест из базы данных.
+    # Если база данных пуста, то будет отправлено соответствующее сообщение.
 
     # Удаляем сообщение с командой от пользователя (во избежание захламления)
     await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
 
-    # подключаемся к бд и выводим список мест через цикл for
+    # Gодключаемся к бд и выводим список мест через цикл for
     async with aiosqlite.connect('places.db') as db:
         cursor = await db.cursor()
         await cursor.execute('SELECT * FROM places')
@@ -118,7 +130,7 @@ async def show_places(message: types.Message):
         if not rows:
             await message.answer("База данных пуста! 🤷🏽‍♂️")
         else:
-            places_list = ''  # строка для хранения всех мест (для дальнейшего удаления)
+            places_list = ''  # Cтрока для хранения всех мест (для дальнейшего удаления)
             for row in rows:
                 places_list += f"Название: {row[0]}\n"\
                                f"Адрес: {row[1]}\n"\
@@ -128,25 +140,28 @@ async def show_places(message: types.Message):
             await bot.delete_message(chat_id=message.chat.id, message_id=sent_message.message_id)
 
 
-# Проверка, является ли пользователь администратором
-# или доверенным лицом (его id находится в списке разрешенных)
 async def admin_check(message: types.Message):
+    # Функция для проверки, является ли пользователь администратором
+    # или его ID включен в список разрешенных ID из конфигурационного файла.
+
     chat_member = await bot.get_chat_member(chat_id=message.chat.id, user_id=message.from_user.id)
     return chat_member.status in ["creator", "administrator"] or message.from_user.id in config.tg_bot.admin_ids
 
 
-# хэндлер реагирующий на команду /del (доступна только админу)
 @dp.message_handler(Command('del'), state="*")
 async def start_del_cmd_handler(message: types.Message) -> None:
+    # Обработчик команды '/del', удаляет место из базы данных.
+    # Если пользователь не является администратором и его ID не указан в конфигурационном файле,
+    # то будет отправлено сообщение об ошибке.
 
     state = dp.current_state(user=message.from_user.id)
 
     async with state.proxy() as data:
-        # сохраняем сообщения в список для дальнейшего удаления
+        # Cохраняем сообщения в список для дальнейшего удаления
         data['messages_to_delete'] = [message.message_id]
         data['attempts'] = 3
 
-        # проверяем, является ли пользователь администратором или находится ли его идентификатор в списке разрешенных
+        # Gроверяем, является ли пользователь администратором или находится ли его идентификатор в списке разрешенных
         if not await admin_check(message):
             sent_message = await message.answer("Вы не являетесь администратором или не имеете разрешения! 🤬")
             data['messages_to_delete'].append(sent_message.message_id)
@@ -166,9 +181,13 @@ async def start_del_cmd_handler(message: types.Message) -> None:
     await Del.name.set()
 
 
-# состояние после вызова команды /del
 @dp.message_handler(state=Del.name)
 async def process_del_name(message: types.Message, state: FSMContext):
+    # Этот обработчик отвечает на следующий этап после команды '/del'.
+    # Он принимает название места, которое необходимо удалить.
+    # Если место не найдено в базе данных, пользователю предоставляется еще несколько попыток для ввода.
+    # Если место найдено, оно удаляется из базы данных.
+
     async with state.proxy() as data:
         data['messages_to_delete'].append(message.message_id)
 
@@ -177,7 +196,7 @@ async def process_del_name(message: types.Message, state: FSMContext):
             data['messages_to_delete'].append(sent_message.message_id)
 
             await asyncio.sleep(1)
-            # удаляем сообщения
+            # Удаляем сообщения
             for msg_id in data['messages_to_delete']:
                 try:
                     await bot.delete_message(chat_id=message.chat.id, message_id=msg_id)
@@ -202,7 +221,7 @@ async def process_del_name(message: types.Message, state: FSMContext):
                     sent_message = await message.answer("Превышено количество попыток. Операция отменена. 💥")
                     data['messages_to_delete'].append(sent_message.message_id)
 
-                    # Удаление сообщений
+                    # Удаляем сообщения
                     for msg_id in data['messages_to_delete']:
                         try:
                             await bot.delete_message(chat_id=message.chat.id, message_id=msg_id)
@@ -219,7 +238,8 @@ async def process_del_name(message: types.Message, state: FSMContext):
             data['messages_to_delete'].append(sent_message.message_id)
 
             await asyncio.sleep(1)
-            # удаляем сообщения после удаления места
+
+            # Удаляем сообщения после удаления места
             for msg_id in data['messages_to_delete']:
                 try:
                     await bot.delete_message(chat_id=message.chat.id, message_id=msg_id)
@@ -229,9 +249,12 @@ async def process_del_name(message: types.Message, state: FSMContext):
             await state.finish()
 
 
-# хэндлер реагирующий на команду /rating
 @dp.message_handler(Command('rating'))
 async def start_rating_cmd_handler(message: types.Message):
+    # Обработчик команды /rating. Он устанавливает текущее состояние
+    # для пользователя и начинает диалог, просив пользователя ввести
+    # название места, которое он хочет оценить.
+
     state = dp.current_state(user=message.from_user.id)
     async with state.proxy() as data:
         data['messages_to_delete'] = [message.message_id]
@@ -242,6 +265,12 @@ async def start_rating_cmd_handler(message: types.Message):
 
 @dp.message_handler(state=Rating.name)
 async def process_rating_name(message: types.Message, state: FSMContext):
+    # Этот обработчик обрабатывает введенное пользователем название места.
+    # Он проверяет, существует ли это место в базе данных. Если место не найдено,
+    # у пользователя есть ограниченное количество попыток для повторного ввода.
+    # После того, как место успешно найдено, пользователю предлагается ввести
+    # оценку от 1 до 10.
+
     async with state.proxy() as data:
         data['name'] = message.text.lower()
         data['messages_to_delete'].append(message.message_id)
@@ -281,6 +310,10 @@ async def process_rating_name(message: types.Message, state: FSMContext):
 
 @dp.message_handler(state=Rating.rating)
 async def process_rating(message: types.Message, state: FSMContext):
+    # Этот обработчик обрабатывает введенную пользователем оценку.
+    # Оценка должна быть целым числом от 1 до 10. После успешного ввода
+    # оценки она сохраняется в базе данных.
+
     async with state.proxy() as data:
         data['messages_to_delete'].append(message.message_id)
 
@@ -348,6 +381,8 @@ async def process_rating(message: types.Message, state: FSMContext):
 
 @dp.message_handler(Command('random'))
 async def random_place(message: types.Message):
+    # Этот обработчик отправляет пользователю случайное место
+    # из базы данных при получении команды /random.
 
     # Удаляем сообщение с командой от пользователя
     await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
@@ -379,6 +414,8 @@ async def handle_poll_answer(poll_answer: types.PollAnswer):
 
 
 async def send_poll():
+    # Функция отправки опроса в чат группы в телеграм
+
     async with aiosqlite.connect('places.db') as db:
         cursor = await db.cursor()
         await cursor.execute('SELECT * FROM places ORDER BY RANDOM() LIMIT 7')
@@ -405,6 +442,9 @@ async def send_poll():
 
 
 async def check_poll_results():
+    # Функция проверки результатов опросов
+    # формирует сообщение о выбранном месте по результатам голосования
+
     results_text = list()
 
     for poll_id, results in poll_results.items():
