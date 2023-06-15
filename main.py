@@ -172,13 +172,12 @@ async def process_del_name(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         data['messages_to_delete'].append(message.message_id)
 
-    if not await admin_check(message):
-        sent_message = await message.answer("Вы не являетесь администратором! 🤬")
-        data['messages_to_delete'].append(sent_message.message_id)
+        if not await admin_check(message):
+            sent_message = await message.answer("Вы не являетесь администратором! 🤬")
+            data['messages_to_delete'].append(sent_message.message_id)
 
-        await asyncio.sleep(1)
-        # удаляем сообщения
-        async with state.proxy() as data:
+            await asyncio.sleep(1)
+            # удаляем сообщения
             for msg_id in data['messages_to_delete']:
                 try:
                     await bot.delete_message(chat_id=message.chat.id, message_id=msg_id)
@@ -186,7 +185,6 @@ async def process_del_name(message: types.Message, state: FSMContext):
                     continue
             return
 
-    async with state.proxy() as data:
         data['name'] = message.text
 
         async with aiosqlite.connect('places.db') as db:
@@ -218,17 +216,15 @@ async def process_del_name(message: types.Message, state: FSMContext):
             await db.commit()
 
             sent_message = await message.answer("✅ Место успешно удалено! ✅")
-            async with state.proxy() as data:
-                data['messages_to_delete'].append(sent_message.message_id)
+            data['messages_to_delete'].append(sent_message.message_id)
 
             await asyncio.sleep(1)
             # удаляем сообщения после удаления места
-            async with state.proxy() as data:
-                for msg_id in data['messages_to_delete']:
-                    try:
-                        await bot.delete_message(chat_id=message.chat.id, message_id=msg_id)
-                    except exceptions.MessageCantBeDeleted:
-                        continue
+            for msg_id in data['messages_to_delete']:
+                try:
+                    await bot.delete_message(chat_id=message.chat.id, message_id=msg_id)
+                except exceptions.MessageCantBeDeleted:
+                    continue
 
             await state.finish()
 
