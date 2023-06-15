@@ -151,7 +151,7 @@ async def start_del_cmd_handler(message: types.Message) -> None:
             sent_message = await message.answer("Вы не являетесь администратором или не имеете разрешения! 🤬")
             data['messages_to_delete'].append(sent_message.message_id)
             # Добавляем задержку
-            await asyncio.sleep(1)
+            await asyncio.sleep(10)
 
             for msg_id in data['messages_to_delete']:
                 try:
@@ -398,7 +398,7 @@ async def random_place(message: types.Message):
                                           f"Название: {random_row[0]}\n"
                                           f"Адрес: {random_row[1]}\n"
                                           f"Рейтинг: {random_row[2]}\n")
-            await asyncio.sleep(5)
+            await asyncio.sleep(20)
             await bot.delete_message(chat_id=message.chat.id, message_id=answer.message_id)
         else:
             await message.answer("В базе данных пока нет интересных мест. 🤷🏽‍♂️")
@@ -428,7 +428,6 @@ async def send_poll():
                  "Воскресенье | 12:00", "Воскресенье | 13:00", "Воскресенье | 14:00", "Воскресенье | 15:00", "Воскресенье | 17:00"],
         is_anonymous=False,
     )
-
     poll_data[poll_message1.poll.id] = poll_message1.poll.options
 
     poll_message2 = await bot.send_poll(
@@ -459,7 +458,7 @@ async def check_poll_results():
 
 if __name__ == '__main__':
     scheduler = AsyncIOScheduler()
-    trigger = CronTrigger(day_of_week='mon', hour=12)
+    trigger = CronTrigger(day_of_week='mon', hour=12,)
     trigger1 = CronTrigger(day_of_week='fri', hour=12)
     scheduler.add_job(send_poll, trigger)
     scheduler.add_job(check_poll_results, trigger1)
