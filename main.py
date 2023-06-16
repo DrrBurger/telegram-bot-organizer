@@ -1,5 +1,6 @@
 import asyncio
 from collections import defaultdict
+import json
 import logging
 import random
 
@@ -41,6 +42,7 @@ async def help_command(message: types.Message) -> None:
 
     if 'start' in message.text:
         await bot.send_message(message.chat.id, "Привет, я ваш бот!\nВсе команды - /help")
+        await create_db()
     else:
         help_text = "Доступные команды:\n" \
             "/add - Добавить новое место\n" \
@@ -403,19 +405,20 @@ async def random_place(message: types.Message):
             await message.answer("В базе данных пока нет интересных мест. 🤷🏽‍♂️")
 
 
-poll_data = {}
-poll_results = defaultdict(lambda: defaultdict(int))
-
-
 @dp.poll_answer_handler()
 async def handle_poll_answer(poll_answer: types.PollAnswer):
-    for option_id in poll_answer.option_ids:
-        poll_results[poll_answer.poll_id][option_id] += 1
+    async with aiosqlite.connect('places.db') as db:
+        cursor = await db.cursor()
+
+        for option_id in poll_answer.option_ids:
+            await cursor.execute('INSERT INTO poll_results (poll_id, option_id, votes) VALUES (?, ?, 1) '
+                                 'ON CONFLICT(poll_id, option_id) DO UPDATE SET votes = votes + 1',
+                                 (poll_answer.poll_id, option_id))
+
+        await db.commit()
 
 
 async def send_poll():
-    # Функция отправки опроса в чат группы в телеграм
-
     async with aiosqlite.connect('places.db') as db:
         cursor = await db.cursor()
         await cursor.execute('SELECT * FROM places ORDER BY RANDOM() LIMIT 7')
@@ -429,7 +432,6 @@ async def send_poll():
                  "Воскресенье | 12:00", "Воскресенье | 13:00", "Воскресенье | 14:00", "Воскресенье | 15:00", "Воскресенье | 17:00"],
         is_anonymous=False,
     )
-    poll_data[poll_message1.poll.id] = poll_message1.poll.options
 
     poll_message2 = await bot.send_poll(
         chat_id=-857034880,
@@ -438,32 +440,50 @@ async def send_poll():
         is_anonymous=False,
     )
 
-    poll_data[poll_message2.poll.id] = poll_message2.poll.options
+    async with aiosqlite.connect('places.db') as db:
+        cursor = await db.cursor()
+
+        await cursor.execute('INSERT INTO poll_data (poll_id, options) VALUES (?, ?)',
+                             (poll_message1.poll.id, json.dumps([option.text for option in poll_message1.poll.options])))
+
+        await cursor.execute('INSERT INTO poll_data (poll_id, options) VALUES (?, ?)',
+                             (poll_message2.poll.id, json.dumps([option.text for option in poll_message2.poll.options])))
+
+        await db.commit()
 
 
 async def check_poll_results():
-    # Функция проверки результатов опросов
-    # формирует сообщение о выбранном месте по результатам голосования
+    async with aiosqlite.connect('places.db') as db:
+        cursor = await db.cursor()
 
-    results_text = list()
+        await cursor.execute('SELECT * FROM poll_data')
+        all_polls = await cursor.fetchall()
 
-    for poll_id, results in poll_results.items():
-        max_votes = max(count for count in results.values())
-        winners = [poll_data[poll_id][option].text for option, count in results.items() if count == max_votes]
+        results_text = list()
 
-        results_text.append(winners[0])
+        for poll in all_polls:
+            poll_id, options = poll[0], json.loads(poll[1])
 
-    await bot.send_message(-857034880, f'♨️Уважемые причастные! Данные вашей встречи!♨️\n\n'
-                           f'Когда: {results_text[0]}\n{results_text[1]}')
+            await cursor.execute('SELECT option_id, MAX(votes) FROM poll_results WHERE poll_id = ?', (poll_id,))
+            winner = await cursor.fetchone()
 
-    # Очищаем данные опроса
-    poll_data.clear()
-    poll_results.clear()
+            winners_text = options[winner[0]]
+
+            results_text.append(winners_text)
+
+        await bot.send_message(-857034880, f'♨️Уважемые причастные! Данные вашей встречи!♨️\n\n'
+                               f'Когда: {results_text[0]}\n{results_text[1]}')
+
+        # Очищаем данные опроса
+        await cursor.execute('DELETE FROM poll_data')
+        await cursor.execute('DELETE FROM poll_results')
+
+        await db.commit()
 
 if __name__ == '__main__':
     scheduler = AsyncIOScheduler()
-    trigger = CronTrigger(day_of_week='mon', hour=12,)
-    trigger1 = CronTrigger(day_of_week='fri', hour=12)
+    trigger = CronTrigger(day_of_week='fri', hour=13, minute=24)
+    trigger1 = CronTrigger(day_of_week='fri', hour=13, minute=24, second=10)
     scheduler.add_job(send_poll, trigger)
     scheduler.add_job(check_poll_results, trigger1)
     scheduler.start()

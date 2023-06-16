@@ -13,18 +13,20 @@ async def create_db():
 
             CREATE TABLE IF NOT EXISTS poll_results (
                 poll_id TEXT,
-                option_id INTEGER
+                option_id INTEGER,
+                votes INTEGER,
+                PRIMARY KEY (poll_id, option_id)
             );
 
             CREATE TABLE IF NOT EXISTS places (
-                name text,
-                address text,
-                rating integer DEFAULT 0
+                name TEXT,
+                address TEXT,
+                rating INTEGER DEFAULT 0
             );
 
             CREATE TABLE IF NOT EXISTS ratings (
-                name text,
-                rating integer
+                name TEXT,
+                rating INTEGER
             );
         ''')
 
