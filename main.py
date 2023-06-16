@@ -33,6 +33,9 @@ bot = Bot(token=config.tg_bot.token)
 storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)
 
+# Список разрешенных чатов для добавления места
+allowed_chat = config.tg_bot.allowed_chat_ids
+
 
 @dp.message_handler(Command(commands=['start', 'help']))
 async def help_command(message: types.Message) -> None:
@@ -42,7 +45,7 @@ async def help_command(message: types.Message) -> None:
 
     if 'start' in message.text:
         await bot.send_message(message.chat.id, "Привет, я ваш бот!\nВсе команды - /help")
-        await create_db()
+        await create_db()  # создается база данных при запуске бота
     else:
         help_text = "Доступные команды:\n" \
             "/add - Добавить новое место\n" \
@@ -62,6 +65,15 @@ async def start_cmd_handler(message: types.Message) -> None:
     # Функция-обработчик команды '/add'
     # Когда пользователь отправляет эту команду,
     # начинается диалог для добавления нового места
+
+    # Проверка на принадлежность к определенному чату
+    if message.chat.id not in allowed_chat:
+        bot_message = await message.answer('🚫 Эта команда доступна только для чата: "IT Завтраки, Тбилиси" 🚫')
+        await asyncio.sleep(5)
+        await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
+        await bot.delete_message(chat_id=message.chat.id, message_id=bot_message.message_id)
+
+        return
 
     state = dp.current_state(chat=message.chat.id, user=message.from_user.id)
     bot_message = await message.answer("Введите название места:👾")
@@ -362,7 +374,6 @@ async def process_rating(message: types.Message, state: FSMContext):
                 await state.reset_state()
                 return
 
-            await cursor.execute('CREATE TABLE IF NOT EXISTS ratings (name text, rating integer)')
             await cursor.execute('INSERT INTO ratings (name, rating) VALUES (?, ?)', (data['name'], data['rating']))
             await cursor.execute('SELECT AVG(rating) FROM ratings WHERE name = ?', (data['name'],))
             avg_rating = await cursor.fetchone()
@@ -383,7 +394,7 @@ async def process_rating(message: types.Message, state: FSMContext):
 
 @dp.message_handler(Command('random'))
 async def random_place(message: types.Message):
-    # Этот обработчик отправляет пользователю случайное место
+    # Отправляет пользователю случайное мест
     # из базы данных при получении команды /random.
 
     # Удаляем сообщение с командой от пользователя
@@ -407,6 +418,9 @@ async def random_place(message: types.Message):
 
 @dp.poll_answer_handler()
 async def handle_poll_answer(poll_answer: types.PollAnswer):
+    # Ловит ответ на опрос и затем записывает его в базу данных SQLite.
+    # Если такой ответ уже существует, то он просто увеличивает количество голосов.
+
     async with aiosqlite.connect('places.db') as db:
         cursor = await db.cursor()
 
@@ -419,6 +433,12 @@ async def handle_poll_answer(poll_answer: types.PollAnswer):
 
 
 async def send_poll():
+    # Функция отвечает за отправку двух опросов в чат Telegram.
+    # Один опрос связан с выбором времени и дня недели,
+    # а другой опрос связан с выбором места из списка,
+    # который изначально был получен из базы данных.
+    # Результаты опросов сохраняются в базе данных.
+
     async with aiosqlite.connect('places.db') as db:
         cursor = await db.cursor()
         await cursor.execute('SELECT * FROM places ORDER BY RANDOM() LIMIT 7')
@@ -453,6 +473,11 @@ async def send_poll():
 
 
 async def check_poll_results():
+    # Функция просматривает все опросы в базе данных,
+    # выбирает победителя каждого опроса (то есть вариант с наибольшим числом голосов),
+    # формирует текстовое сообщение с результатами и отправляет это сообщение в чат.
+    # Затем все данные об опросах удаляются из базы данных.
+
     async with aiosqlite.connect('places.db') as db:
         cursor = await db.cursor()
 
@@ -482,8 +507,8 @@ async def check_poll_results():
 
 if __name__ == '__main__':
     scheduler = AsyncIOScheduler()
-    trigger = CronTrigger(day_of_week='fri', hour=13, minute=24)
-    trigger1 = CronTrigger(day_of_week='fri', hour=13, minute=24, second=10)
+    trigger = CronTrigger(day_of_week='fri', hour=13, minute=28)
+    trigger1 = CronTrigger(day_of_week='fri', hour=13, minute=28, second=15)
     scheduler.add_job(send_poll, trigger)
     scheduler.add_job(check_poll_results, trigger1)
     scheduler.start()
