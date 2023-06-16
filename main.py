@@ -84,6 +84,7 @@ async def start_cmd_handler(message: types.Message) -> None:
 @dp.message_handler(state=Place.name)
 async def process_name(message: types.Message, state: FSMContext):
     # Этот обработчик активируется после команды '/add'
+    # при условии что он прошел проверку на принадлежность к чату
     # и спрашивает у пользователя название места
 
     async with state.proxy() as data:
@@ -154,14 +155,6 @@ async def show_places(message: types.Message):
             await bot.delete_message(chat_id=message.chat.id, message_id=sent_message.message_id)
 
 
-async def admin_check(message: types.Message):
-    # Функция для проверки, является ли пользователь администратором
-    # или его ID включен в список разрешенных ID из конфигурационного файла.
-
-    chat_member = await bot.get_chat_member(chat_id=message.chat.id, user_id=message.from_user.id)
-    return chat_member.status in ["creator", "administrator"] or message.from_user.id in config.tg_bot.admin_ids
-
-
 @dp.message_handler(Command('del'), state="*")
 async def start_del_cmd_handler(message: types.Message) -> None:
     # Обработчик команды '/del', удаляет место из базы данных.
@@ -175,10 +168,11 @@ async def start_del_cmd_handler(message: types.Message) -> None:
         data['messages_to_delete'] = [message.message_id]
         data['attempts'] = 3
 
-        # Gроверяем, является ли пользователь администратором или находится ли его идентификатор в списке разрешенных
+        # Проверяем, является ли пользователь администратором или находится ли его идентификатор в списке разрешенных
         if not await admin_check(message):
             sent_message = await message.answer("Вы не являетесь администратором или не имеете разрешения! 🤬")
             data['messages_to_delete'].append(sent_message.message_id)
+
             # Добавляем задержку
             await asyncio.sleep(10)
 
@@ -269,6 +263,15 @@ async def start_rating_cmd_handler(message: types.Message):
     # для пользователя и начинает диалог, просив пользователя ввести
     # название места, которое он хочет оценить.
 
+    # Проверка на принадлежность к определенному чату
+    if message.chat.id not in allowed_chat:
+        bot_message = await message.answer('🚫 Эта команда доступна только для чата: "IT Завтраки, Тбилиси" 🚫')
+        await asyncio.sleep(5)
+        await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
+        await bot.delete_message(chat_id=message.chat.id, message_id=bot_message.message_id)
+
+        return
+
     state = dp.current_state(user=message.from_user.id)
     async with state.proxy() as data:
         data['messages_to_delete'] = [message.message_id]
@@ -280,8 +283,8 @@ async def start_rating_cmd_handler(message: types.Message):
 @dp.message_handler(state=Rating.name)
 async def process_rating_name(message: types.Message, state: FSMContext):
     # Этот обработчик обрабатывает введенное пользователем название места.
-    # Он проверяет, существует ли это место в базе данных. Если место не найдено,
-    # у пользователя есть ограниченное количество попыток для повторного ввода.
+    # Проверяет, существует ли это место в базе данных. Если место не найдено,
+    # пользователю дается еще 2 попытки для повторного ввода.
     # После того, как место успешно найдено, пользователю предлагается ввести
     # оценку от 1 до 10.
 
@@ -325,8 +328,8 @@ async def process_rating_name(message: types.Message, state: FSMContext):
 @dp.message_handler(state=Rating.rating)
 async def process_rating(message: types.Message, state: FSMContext):
     # Этот обработчик обрабатывает введенную пользователем оценку.
-    # Оценка должна быть целым числом от 1 до 10. После успешного ввода
-    # оценки она сохраняется в базе данных.
+    # Если оценка, не является целым числом от 1 до 10, пользователю дается еще 2 попытки
+    # для ввода. После успешного ввода оценки, она сохраняется в базе данных.
 
     async with state.proxy() as data:
         data['messages_to_delete'].append(message.message_id)
@@ -394,8 +397,9 @@ async def process_rating(message: types.Message, state: FSMContext):
 
 @dp.message_handler(Command('random'))
 async def random_place(message: types.Message):
-    # Отправляет пользователю случайное мест
-    # из базы данных при получении команды /random.
+    # Обработчик реагирует на команду /random
+    # Отправляет пользователю случайное место
+    # из базы данных
 
     # Удаляем сообщение с командой от пользователя
     await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
@@ -430,6 +434,14 @@ async def handle_poll_answer(poll_answer: types.PollAnswer):
                                  (poll_answer.poll_id, option_id))
 
         await db.commit()
+
+
+async def admin_check(message: types.Message):
+    # Функция для проверки, является ли пользователь администратором
+    # или его ID включен в список разрешенных ID из конфигурационного файла.
+
+    chat_member = await bot.get_chat_member(chat_id=message.chat.id, user_id=message.from_user.id)
+    return chat_member.status in ["creator", "administrator"] or message.from_user.id in config.tg_bot.admin_ids
 
 
 async def send_poll():
