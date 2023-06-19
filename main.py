@@ -106,7 +106,7 @@ async def process_name(message: types.Message, state: FSMContext):
                     await bot.delete_message(chat_id=message.chat.id, message_id=msg_id)
             else:
                 bot_message = await message.answer("Введите адрес места:📍")
-                await state.update_data(message_id=data['message_id'] + [bot_message.message_id])
+                data['message_id'].extend([bot_message.message_id])
                 await Place.next()
 
 
@@ -155,7 +155,7 @@ async def show_places(message: types.Message):
             for row in rows:
                 places_list += f"Название: {row[0]}\n"\
                                f"Адрес: {row[1]}\n"\
-                               f"Средний рейтинг: {row[2]:.1f}\n\n"
+                               f"Рейтинг: {row[2]:.1f}\n\n"
             sent_message = await message.answer(places_list)
             await asyncio.sleep(60)  # список мест будет удален через 60 сек (во избежание захламления)
             await bot.delete_message(chat_id=message.chat.id, message_id=sent_message.message_id)
