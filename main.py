@@ -461,21 +461,21 @@ async def send_poll():
         cursor = await db.cursor()
         await cursor.execute('SELECT * FROM places ORDER BY RANDOM() LIMIT 7')
         places = await cursor.fetchall()
-        place_options = [f"Место: {place[0]} | Адрес: {place[1]} | Рейтинг: {place[2]}" for place in places]
+        place_options = [f"Место: {place[0]} | Рейтинг: {place[2]}" for place in places]
 
     poll_message1 = await bot.send_poll(
-        chat_id=-857034880,
+        chat_id=-1001646936147,
         question="Выберите время и день недели:⏰",
-        options=["Суббота | 12:00", "Суббота | 13:00", "Суббота | 14:00", "Суббота | 15:00", "Суббота | 17:00",
-                 "Воскресенье | 12:00", "Воскресенье | 13:00", "Воскресенье | 14:00", "Воскресенье | 15:00", "Воскресенье | 17:00"],
+        options=["Суббота | 11:00", "Суббота | 12:00", "Суббота | 15:00", "Суббота | 16:00", "Суббота | 17:00",
+                 "Воскресенье | 11:00", "Воскресенье | 12:00", "Воскресенье | 15:00", "Воскресенье | 16:00", "Воскресенье | 17:00"],
         is_anonymous=False,
         allows_multiple_answers=True
     )
 
     poll_message2 = await bot.send_poll(
-        chat_id=-857034880,
+        chat_id=-1001646936147,
         question="Выберите место:🍔",
-        options=place_options,
+        options=[*place_options, 'Парк'],
         is_anonymous=False,
         allows_multiple_answers=True
     )
@@ -517,10 +517,10 @@ async def check_poll_results():
                 results_text.append(winners_text)
 
         if len(results_text) >= 2:
-            await bot.send_message(-857034880, f'♨️Уважемые причастные! Данные вашей встречи!♨️\n\n'
+            await bot.send_message(-1001646936147, f'♨️Уважемые причастные! Данные вашей встречи!♨️\n\n'
                                    f'Когда: {results_text[0]}\n{results_text[1]}')
         else:
-            await bot.send_message(-857034880, 'Нет достаточного количества данных для вывода результатов.')
+            await bot.send_message(-1001646936147, 'Нет достаточного количества данных для вывода результатов.')
 
         # Очищаем данные опроса
         await cursor.execute('DELETE FROM poll_data')
@@ -530,8 +530,8 @@ async def check_poll_results():
 
 if __name__ == '__main__':
     scheduler = AsyncIOScheduler()
-    trigger = CronTrigger(day_of_week='mon', hour=19, minute=10)
-    trigger1 = CronTrigger(day_of_week='mon', hour=19, minute=10, second=30)
+    trigger = CronTrigger(day_of_week='mon', hour=20, minute=10)
+    trigger1 = CronTrigger(day_of_week='fri', hour=20, minute=10, second=30)
     scheduler.add_job(send_poll, trigger)
     scheduler.add_job(check_poll_results, trigger1)
     scheduler.start()
