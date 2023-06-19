@@ -153,7 +153,7 @@ async def show_places(message: types.Message):
         else:
             places_list = '👉СПИСОК ВСЕХ МЕСТ В БАЗЕ👈\n\n'  # Cтрока для хранения всех мест (для дальнейшего удаления)
             for row in rows:
-                places_list += f"Название: {row[0]}\n"\
+                places_list += f"Место: {row[0]}\n"\
                                f"Адрес: {row[1]}\n"\
                                f"Рейтинг: {row[2]:.1f}\n\n"
             sent_message = await message.answer(places_list)
