@@ -44,16 +44,16 @@ async def help_command(message: types.Message) -> None:
     # бот отвечает соответствующим сообщением
 
     if 'start' in message.text:
-        await bot.send_message(message.chat.id, "Привет, я ваш бот!\nВсе команды - /help")
+        await bot.send_message(message.chat.id, "Привет, я бот органайзер!\nДоступные команды - /help")
         await create_db()  # создается база данных при запуске бота
     else:
-        help_text = "Доступные команды:\n" \
+        help_text = "✋ДОСТУПНЫЕ КОМАНДЫ!🤚\n\n" \
             "/add - Добавить новое место\n" \
             "/del - Удалить место (только для администраторов)\n" \
             "/place - Вывести список всех мест\n" \
             "/random - Выбрать случайное место\n" \
-            "/rating - Поставить оценку выбранному месту\n" \
-            "/poll - Отправляяет опрос с выбором дня"
+            "/rating - Поставить оценку выбранному месту\n"
+
         await message.answer(help_text)
 
     # Удаляем сообщение с командой от пользователя
@@ -90,9 +90,24 @@ async def process_name(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         data['name'] = message.text.lower()
         data['message_id'].extend([message.message_id])  # сохраняем идентификатор сообщения
-    bot_message = await message.answer("Введите адрес места:📍")
-    await state.update_data(message_id=data['message_id'] + [bot_message.message_id])
-    await Place.next()
+
+        # Проверяем наличие места в базе данных
+        async with aiosqlite.connect('places.db') as db:
+            cursor = await db.cursor()
+            await cursor.execute('SELECT name FROM places WHERE name = ?', (data['name'],))
+            result = await cursor.fetchone()
+
+            if result is not None:
+                bot_message = await message.answer("❌ Это место уже есть в базе! ❌")
+                data['message_id'].extend([bot_message.message_id])
+                await state.finish()
+                await asyncio.sleep(1)
+                for msg_id in data['message_id']:
+                    await bot.delete_message(chat_id=message.chat.id, message_id=msg_id)
+            else:
+                bot_message = await message.answer("Введите адрес места:📍")
+                await state.update_data(message_id=data['message_id'] + [bot_message.message_id])
+                await Place.next()
 
 
 @dp.message_handler(state=Place.address)
@@ -107,19 +122,10 @@ async def process_address(message: types.Message, state: FSMContext):
         # Добавляем место в базу данных
         async with aiosqlite.connect('places.db') as db:
             cursor = await db.cursor()
-            await cursor.execute('CREATE TABLE IF NOT EXISTS places (name text, address text, rating integer DEFAULT 0)')
-
-            # проверка на существование места в базе
-            await cursor.execute('SELECT name FROM places WHERE name = ?', (data['name'],))
-            result = await cursor.fetchone()
-            if result is not None:
-                bot_message = await message.answer("❌ Это место уже есть в базе! ❌")
-                data['message_id'].extend([bot_message.message_id])
-            else:
-                await cursor.execute('INSERT INTO places (name, address) VALUES (?, ?)', (data['name'], data['address']))
-                await db.commit()
-                bot_message = await message.answer("✅ Место успешно добавлено! ✅")
-                data['message_id'].extend([bot_message.message_id])
+            await cursor.execute('INSERT INTO places (name, address) VALUES (?, ?)', (data['name'], data['address']))
+            await db.commit()
+            bot_message = await message.answer("✅ Место успешно добавлено! ✅")
+            data['message_id'].extend([bot_message.message_id])
 
     await state.finish()
 
@@ -145,7 +151,7 @@ async def show_places(message: types.Message):
         if not rows:
             await message.answer("База данных пуста! 🤷🏽‍♂️")
         else:
-            places_list = ''  # Cтрока для хранения всех мест (для дальнейшего удаления)
+            places_list = '👉СПИСОК ВСЕХ МЕСТ В БАЗЕ👈\n\n'  # Cтрока для хранения всех мест (для дальнейшего удаления)
             for row in rows:
                 places_list += f"Название: {row[0]}\n"\
                                f"Адрес: {row[1]}\n"\
@@ -410,7 +416,7 @@ async def random_place(message: types.Message):
         rows = await cursor.fetchall()
         if rows:
             random_row = random.choice(rows)
-            answer = await message.answer("Случайное место!!!😻\n"
+            answer = await message.answer("👉СЛУЧАЙНОЕ МЕСТО!👈\n\n"
                                           f"Название: {random_row[0]}\n"
                                           f"Адрес: {random_row[1]}\n"
                                           f"Рейтинг: {random_row[2]}\n")
@@ -463,6 +469,7 @@ async def send_poll():
         options=["Суббота | 12:00", "Суббота | 13:00", "Суббота | 14:00", "Суббота | 15:00", "Суббота | 17:00",
                  "Воскресенье | 12:00", "Воскресенье | 13:00", "Воскресенье | 14:00", "Воскресенье | 15:00", "Воскресенье | 17:00"],
         is_anonymous=False,
+        allows_multiple_answers=True
     )
 
     poll_message2 = await bot.send_poll(
@@ -470,6 +477,7 @@ async def send_poll():
         question="Выберите место:🍔",
         options=place_options,
         is_anonymous=False,
+        allows_multiple_answers=True
     )
 
     async with aiosqlite.connect('places.db') as db:
@@ -504,12 +512,15 @@ async def check_poll_results():
             await cursor.execute('SELECT option_id, MAX(votes) FROM poll_results WHERE poll_id = ?', (poll_id,))
             winner = await cursor.fetchone()
 
-            winners_text = options[winner[0]]
+            if winner is not None:
+                winners_text = options[winner[0]]
+                results_text.append(winners_text)
 
-            results_text.append(winners_text)
-
-        await bot.send_message(-857034880, f'♨️Уважемые причастные! Данные вашей встречи!♨️\n\n'
-                               f'Когда: {results_text[0]}\n{results_text[1]}')
+        if len(results_text) >= 2:
+            await bot.send_message(-857034880, f'♨️Уважемые причастные! Данные вашей встречи!♨️\n\n'
+                                   f'Когда: {results_text[0]}\n{results_text[1]}')
+        else:
+            await bot.send_message(-857034880, 'Нет достаточного количества данных для вывода результатов.')
 
         # Очищаем данные опроса
         await cursor.execute('DELETE FROM poll_data')
@@ -519,8 +530,8 @@ async def check_poll_results():
 
 if __name__ == '__main__':
     scheduler = AsyncIOScheduler()
-    trigger = CronTrigger(day_of_week='fri', hour=13, minute=28)
-    trigger1 = CronTrigger(day_of_week='fri', hour=13, minute=28, second=15)
+    trigger = CronTrigger(day_of_week='mon', hour=19, minute=10)
+    trigger1 = CronTrigger(day_of_week='mon', hour=19, minute=10, second=30)
     scheduler.add_job(send_poll, trigger)
     scheduler.add_job(check_poll_results, trigger1)
     scheduler.start()
