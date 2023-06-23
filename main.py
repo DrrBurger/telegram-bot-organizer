@@ -1,5 +1,4 @@
 import asyncio
-from collections import defaultdict
 import json
 import logging
 import random
@@ -531,7 +530,7 @@ async def check_poll_results():
 if __name__ == '__main__':
     scheduler = AsyncIOScheduler()
     trigger = CronTrigger(day_of_week='mon', hour=20, minute=10)
-    trigger1 = CronTrigger(day_of_week='fri', hour=20, minute=10, second=30)
+    trigger1 = CronTrigger(day_of_week='fri', hour=13, minute=10)
     scheduler.add_job(send_poll, trigger)
     scheduler.add_job(check_poll_results, trigger1)
     scheduler.start()
