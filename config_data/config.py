@@ -15,6 +15,7 @@ class TgBot:
     token: str            # Токен для доступа к телеграм-боту
     admin_ids: list[int]  # Список id администраторов бота
     allowed_chat_ids: list[int]  # Список разрешенных чатов для добавления мест
+    target_chat_ids: list[int]  # Список разрешенных чатов для опроса
 
 
 @dataclass
@@ -33,7 +34,8 @@ def load_config(path: str = None) -> Config:
     # возвращаем экземпляр класса Config и наполняем его данными из переменных окружения
     return Config(tg_bot=TgBot(token=env('BOT_TOKEN'),
                   admin_ids=list(map(int, env.list('ADMIN_IDS'))),
-                  allowed_chat_ids=list(map(int, env.list('ALLOWED_CHAT_ID')))),
+                  allowed_chat_ids=list(map(int, env.list('ALLOWED_CHAT_ID'))),
+                  target_chat_ids=list(map(int, env.list('TARGET_CHAT_IDS')))),
 
                   db=DatabaseConfig(database=env('DATABASE'),
                                     db_host=env('DB_HOST'),

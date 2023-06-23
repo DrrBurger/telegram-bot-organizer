@@ -10,12 +10,13 @@ from aiogram.dispatcher.filters import Command
 from aiogram.utils import executor
 
 import aiosqlite
-from databases.database import create_db
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from config_data.config import Config, load_config
+
+from databases.database import create_db
 
 from states.states import Del, Place, Rating
 
@@ -34,6 +35,7 @@ dp = Dispatcher(bot, storage=storage)
 
 # Список разрешенных чатов для добавления места
 allowed_chat = config.tg_bot.allowed_chat_ids
+target_chat = config.tg_bot.target_chat_ids
 
 
 @dp.message_handler(Command(commands=['start', 'help']))
@@ -463,20 +465,20 @@ async def send_poll():
         place_options = [f"Место: {place[0]} | Рейтинг: {place[2]}" for place in places]
 
     poll_message1 = await bot.send_poll(
-        chat_id=-1001646936147,
+        chat_id=target_chat,
         question="Выберите время и день недели:⏰",
         options=["Суббота | 11:00", "Суббота | 12:00", "Суббота | 15:00", "Суббота | 16:00", "Суббота | 17:00",
                  "Воскресенье | 11:00", "Воскресенье | 12:00", "Воскресенье | 15:00", "Воскресенье | 16:00", "Воскресенье | 17:00"],
         is_anonymous=False,
-        allows_multiple_answers=True
+        allows_multiple_answers=True,
     )
 
     poll_message2 = await bot.send_poll(
-        chat_id=-1001646936147,
+        chat_id=target_chat,
         question="Выберите место:🍔",
         options=[*place_options, 'Парк'],
         is_anonymous=False,
-        allows_multiple_answers=True
+        allows_multiple_answers=True,
     )
 
     async with aiosqlite.connect('places.db') as db:
@@ -529,9 +531,7 @@ async def check_poll_results():
 
 if __name__ == '__main__':
     scheduler = AsyncIOScheduler()
-    trigger = CronTrigger(day_of_week='mon', hour=20, minute=10)
-    trigger1 = CronTrigger(day_of_week='fri', hour=13, minute=10)
-    scheduler.add_job(send_poll, trigger)
-    scheduler.add_job(check_poll_results, trigger1)
+    scheduler.add_job(send_poll, CronTrigger(day_of_week='mon', hour=20, minute=10))
+    scheduler.add_job(check_poll_results, CronTrigger(day_of_week='fri', hour=13, minute=10))
     scheduler.start()
     executor.start_polling(dp, skip_updates=True)
