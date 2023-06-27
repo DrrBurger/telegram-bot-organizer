@@ -465,7 +465,7 @@ async def send_poll():
         place_options = [f"Место: {place[0]} | Рейтинг: {place[2]}" for place in places]
 
     poll_message1 = await bot.send_poll(
-        chat_id=target_chat,
+        chat_id=-1001646936147,
         question="Выберите время и день недели:⏰",
         options=["Суббота | 11:00", "Суббота | 12:00", "Суббота | 15:00", "Суббота | 16:00", "Суббота | 17:00",
                  "Воскресенье | 11:00", "Воскресенье | 12:00", "Воскресенье | 15:00", "Воскресенье | 16:00", "Воскресенье | 17:00"],
@@ -474,7 +474,7 @@ async def send_poll():
     )
 
     poll_message2 = await bot.send_poll(
-        chat_id=target_chat,
+        chat_id=-1001646936147,
         question="Выберите место:🍔",
         options=[*place_options, 'Парк'],
         is_anonymous=False,
@@ -531,7 +531,7 @@ async def check_poll_results():
 
 if __name__ == '__main__':
     scheduler = AsyncIOScheduler()
-    scheduler.add_job(send_poll, CronTrigger(day_of_week='mon', hour=20, minute=10))
-    scheduler.add_job(check_poll_results, CronTrigger(day_of_week='fri', hour=13, minute=10))
+    scheduler.add_job(send_poll, CronTrigger(day_of_week='mon', hour=13, minute=32))
+    scheduler.add_job(check_poll_results, CronTrigger(day_of_week='fri', hour=13))
     scheduler.start()
     executor.start_polling(dp, skip_updates=True)
