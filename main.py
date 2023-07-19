@@ -476,7 +476,7 @@ async def send_poll():
     poll_message2 = await bot.send_poll(
         chat_id=-1001646936147,
         question="Выберите место:🍔",
-        options=[*place_options, 'Парк'],
+        options=[*place_options],
         is_anonymous=False,
         allows_multiple_answers=True,
     )
@@ -531,7 +531,7 @@ async def check_poll_results():
 
 if __name__ == '__main__':
     scheduler = AsyncIOScheduler()
-    scheduler.add_job(send_poll, CronTrigger(day_of_week='mon', hour=13, minute=32))
-    scheduler.add_job(check_poll_results, CronTrigger(day_of_week='fri', hour=13))
+    scheduler.add_job(send_poll, CronTrigger(day_of_week='tue', hour=16, minute=28))
+    # scheduler.add_job(check_poll_results, CronTrigger(day_of_week='fri', hour=13))
     scheduler.start()
     executor.start_polling(dp, skip_updates=True)
