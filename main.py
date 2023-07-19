@@ -531,7 +531,7 @@ async def check_poll_results():
 
 if __name__ == '__main__':
     scheduler = AsyncIOScheduler()
-    scheduler.add_job(send_poll, CronTrigger(day_of_week='tue', hour=16, minute=28))
-    # scheduler.add_job(check_poll_results, CronTrigger(day_of_week='fri', hour=13))
+    scheduler.add_job(send_poll, CronTrigger(day_of_week='mon', hour=12, minute=00))
+    scheduler.add_job(check_poll_results, CronTrigger(day_of_week='fri', hour=12, minute=00))
     scheduler.start()
     executor.start_polling(dp, skip_updates=True)
