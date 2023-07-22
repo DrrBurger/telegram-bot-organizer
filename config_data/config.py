@@ -4,7 +4,7 @@ from environs import Env
 
 @dataclass
 class DatabaseConfig:
-    database: str         # Название базы данных
+    database: str         # Название базы данных 
     db_host: str          # URL-адрес базы данных
     db_user: str          # Username пользователя базы данных
     db_password: str      # Пароль к базе данных
