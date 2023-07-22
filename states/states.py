@@ -13,3 +13,4 @@ class Del(StatesGroup):
 class Rating(StatesGroup):
     name = State()
     rating = State()
+    
