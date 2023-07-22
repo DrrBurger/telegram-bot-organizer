@@ -31,3 +31,4 @@ async def create_db():
         ''')
 
         await db.commit()
+        
